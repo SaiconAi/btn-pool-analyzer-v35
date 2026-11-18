@@ -9,6 +9,7 @@ import urllib.request
 import urllib.error
 import http.cookiejar
 import hmac
+from xml.sax.saxutils import escape as xml_escape
 from datetime import date, datetime, timedelta
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -320,7 +321,7 @@ def build_report_data(start_date, end_date):
     groups = {}
     for item in enriched:
         key = item["group"]
-        group = groups.setdefault(key, {"group": key, "type": item["type"], "wallets": 0,
+        group = groups.setdefault(key, {"group": key, "type": item["type"], "in_crm": bool(item.get("in_crm")), "wallets": 0,
                                          "buy_btn": 0.0, "sell_btn": 0.0,
                                          "buy_usdc": 0.0, "sell_usdc": 0.0,
                                          "buy_swaps": 0, "sell_swaps": 0})
@@ -359,6 +360,188 @@ def money(value, digits=2):
     return f"{float(value or 0):,.{digits}f}"
 
 
+
+AI_ANALYST_INSTRUCTIONS = """You are a professional blockchain analytics analyst specializing in cryptocurrency trading behavior, wallet activity, liquidity flows, and transaction pattern detection.
+
+Analyze the structured data provided by BTN Pool & Wallet Analyzer V35.
+
+Your responsibilities:
+1. Write an executive summary of the analyzed period.
+2. Identify significant buying and selling activity.
+3. Analyze the behavior of the top 20 buyer and seller wallets.
+4. Identify relevant groups, teams, and leaders using the CRM data.
+5. Detect potential coordinated trading patterns.
+6. Highlight unusual wallet activity and potential anomalies.
+7. Identify possible common funding sources only when supported by transaction-level funding evidence.
+8. Evaluate buying and selling pressure and net BTN flow.
+9. Provide clear conclusions and recommendations for further investigation.
+
+STRICT RULES:
+- Never invent numbers, transactions, wallet relationships, or conclusions.
+- Use only the data provided.
+- Distinguish verified facts from analytical hypotheses.
+- Do not claim that wallets are controlled by the same person without sufficient evidence.
+- Explicitly indicate when evidence is insufficient.
+- Support important observations with actual figures from the report.
+- The supplied V35 report dataset contains pool swaps and CRM matches, but does not necessarily contain wallet funding transfers. If funding-transfer evidence is absent, explicitly say common funding sources cannot be established from this dataset.
+- Do not equate top-20 wallet activity with total market activity. Clearly state the scope.
+
+Write in a professional, objective and evidence-based style. Use concise section headings: Executive Summary, Buying and Selling Pressure, Wallet and CRM Analysis, Patterns and Anomalies, Funding Sources, Conclusions and Recommended Follow-up, Data Limitations. Write the report in English."""
+
+
+def generate_ai_analysis(report):
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OpenAI is not configured. Add OPENAI_API_KEY to the V35 backend environment.")
+    model = os.environ.get("OPENAI_MODEL", "gpt-6.2-astra").strip() or "gpt-6.2-astra"
+    payload_data = {
+        "period": {"start_date": report["start_date"], "end_date": report["end_date"]},
+        "metrics": {k: report.get(k) for k in ("swap_count", "wallet_count", "buy_count", "sell_count", "buy_btn", "sell_btn", "net_btn", "buy_usdc", "sell_usdc", "crm_rows", "crm_wallets_matched", "crm_wallets_unmatched", "indexed_block", "indexing_errors")},
+        "crm_groups": report.get("groups", []),
+        "top_20_buyers": report.get("buyers", []),
+        "top_20_sellers": report.get("sellers", []),
+        "unidentified_wallets_sample": report.get("unknown_wallets", [])[:30],
+        "funding_transfer_evidence": report.get("funding_evidence", None),
+        "scope_note": "Wallet rankings are top-20 lists. Pool swap data does not by itself prove common ownership or common funding."
+    }
+    body = json.dumps({
+        "model": model,
+        "instructions": AI_ANALYST_INSTRUCTIONS,
+        "input": "Analyze the following structured V35 data and write the report sections requested in your instructions.\n\n" + json.dumps(payload_data, ensure_ascii=False, separators=(",", ":")),
+        "max_output_tokens": 3000,
+        "store": False
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/responses", data=body,
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:1200]
+        raise RuntimeError(f"OpenAI API request failed (HTTP {e.code}): {detail}")
+    except Exception as e:
+        raise RuntimeError("OpenAI API request failed: " + str(e))
+    output = []
+    for item in result.get("output", []):
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                if part.get("type") in ("output_text", "text") and part.get("text"):
+                    output.append(part["text"])
+    text = "\n\n".join(output).strip()
+    if not text:
+        raise RuntimeError("OpenAI returned no analysis text. Response status: " + str(result.get("status", "unknown")))
+    return {"model": model, "text": text, "response_id": result.get("id", "")}
+
+
+class V35Charts:
+    """Small vector charts drawn directly into the PDF without external services."""
+    pass
+
+
+from reportlab.platypus import Flowable
+
+
+class DoubleRingChart(Flowable):
+    def __init__(self, groups, width=520, height=205):
+        Flowable.__init__(self)
+        self.groups = groups or []
+        self.width = width
+        self.height = height
+
+    def draw(self):
+        from reportlab.lib import colors
+        c = self.canv
+        palette = [colors.HexColor(x) for x in ("#2878C8", "#E66A3C", "#20A486", "#E6A000", "#D96C9D", "#7866B2", "#5C9EAD", "#9A7B58", "#75869A")]
+        cx, cy, r = 94, 104, 70
+        vals = [max(0.0, float(g.get("buy_usdc", 0) or 0) + float(g.get("sell_usdc", 0) or 0)) for g in self.groups]
+        total = sum(vals)
+        if total > 0:
+            angle = 90
+            for i, value in enumerate(vals):
+                extent = 360 * value / total
+                c.setFillColor(palette[i % len(palette)])
+                c.wedge(cx-r, cy-r, cx+r, cy+r, angle, extent, fill=1, stroke=0)
+                angle += extent
+        else:
+            c.setFillColor(colors.HexColor("#D9DEE7")); c.circle(cx, cy, r, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.circle(cx, cy, 44, fill=1, stroke=0)
+        domestic = sum(max(0.0, float(g.get("buy_usdc", 0) or 0) + float(g.get("sell_usdc", 0) or 0)) for g in self.groups if g.get("in_crm"))
+        external = max(0.0, total - domestic)
+        inner_total = domestic + external
+        inner_r, inner_hole = 39, 21
+        if inner_total:
+            angle = 90
+            for value, color in ((domestic, colors.HexColor("#243F66")), (external, colors.HexColor("#B9C4D2"))):
+                extent = 360 * value / inner_total
+                c.setFillColor(color); c.wedge(cx-inner_r, cy-inner_r, cx+inner_r, cy+inner_r, angle, extent, fill=1, stroke=0)
+                angle += extent
+        c.setFillColor(colors.white); c.circle(cx, cy, inner_hole, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#243F66")); c.setFont("Helvetica-Bold", 8); c.drawCentredString(cx, cy+2, "CRM")
+        c.setFont("Helvetica", 6.5); c.drawCentredString(cx, cy-8, "classification")
+        c.setFillColor(colors.HexColor("#243F66")); c.setFont("Helvetica-Bold", 9); c.drawString(190, 178, "Trading activity by CRM group")
+        c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#64748B")); c.drawString(190, 165, "Outer ring: groups · Inner ring: CRM-identified vs external")
+        y = 145
+        for i, (g, value) in enumerate(zip(self.groups[:8], vals[:8])):
+            c.setFillColor(palette[i % len(palette)]); c.rect(192, y-2, 7, 7, fill=1, stroke=0)
+            c.setFillColor(colors.HexColor("#263548")); c.setFont("Helvetica", 7)
+            label = str(g.get("group", ""))
+            if len(label) > 42: label = label[:39] + "..."
+            share = (value / total * 100) if total else 0
+            c.drawString(205, y, label)
+            c.drawRightString(self.width-8, y, f"{share:.1f}%  |  {value:,.2f} USDC")
+            y -= 14
+        if len(self.groups) > 8:
+            c.setFillColor(colors.HexColor("#64748B")); c.setFont("Helvetica-Oblique", 6.5)
+            c.drawString(192, y, f"+ {len(self.groups)-8} additional groups included in the chart")
+
+
+class GroupPressureChart(Flowable):
+    def __init__(self, groups, width=520, height=205):
+        Flowable.__init__(self); self.groups = (groups or [])[:8]; self.width=width; self.height=height
+
+    def draw(self):
+        from reportlab.lib import colors
+        c=self.canv; rows=self.groups; left=145; right=self.width-12; top=self.height-18
+        c.setFillColor(colors.HexColor("#243F66")); c.setFont("Helvetica-Bold", 9); c.drawString(4, self.height-10, "Buy-side vs sell-side pressure by group (USDC)")
+        maximum=max([max(float(g.get("buy_usdc",0) or 0),float(g.get("sell_usdc",0) or 0)) for g in rows] or [1]) or 1
+        usable=right-left; y=top-18
+        for g in rows:
+            label=str(g.get("group", "")); label=label if len(label)<=25 else label[:22]+"..."
+            c.setFillColor(colors.HexColor("#334155")); c.setFont("Helvetica",6.5); c.drawRightString(left-8,y+3,label)
+            for val, yy, color in ((float(g.get("buy_usdc",0) or 0),y+4,colors.HexColor("#2878C8")),(float(g.get("sell_usdc",0) or 0),y-3,colors.HexColor("#E66A3C"))):
+                w=usable*val/maximum
+                c.setFillColor(color); c.roundRect(left,yy,w,4,2,fill=1,stroke=0)
+            c.setFillColor(colors.HexColor("#64748B")); c.setFont("Helvetica",6); c.drawRightString(right,y-8,f"B {float(g.get('buy_usdc',0) or 0):,.0f} / S {float(g.get('sell_usdc',0) or 0):,.0f}")
+            y-=21
+        c.setFillColor(colors.HexColor("#2878C8")); c.rect(left,5,7,6,fill=1,stroke=0); c.setFillColor(colors.HexColor("#334155")); c.setFont("Helvetica",6.5); c.drawString(left+11,5,"Buy volume")
+        c.setFillColor(colors.HexColor("#E66A3C")); c.rect(left+82,5,7,6,fill=1,stroke=0); c.setFillColor(colors.HexColor("#334155")); c.drawString(left+93,5,"Sell volume")
+
+
+class NetFlowChart(Flowable):
+    def __init__(self, groups, width=520, height=205):
+        Flowable.__init__(self); self.groups=(groups or [])[:10]; self.width=width; self.height=height
+
+    def draw(self):
+        from reportlab.lib import colors
+        c=self.canv; rows=self.groups
+        c.setFillColor(colors.HexColor("#243F66")); c.setFont("Helvetica-Bold",9); c.drawString(4,self.height-10,"Net BTN activity by group (bought minus sold)")
+        vals=[float(g.get("buy_btn",0) or 0)-float(g.get("sell_btn",0) or 0) for g in rows]
+        maxv=max([abs(v) for v in vals] or [1]) or 1
+        x0=self.width/2; span=self.width/2-100; y=self.height-32
+        c.setStrokeColor(colors.HexColor("#94A3B8")); c.line(x0,8,x0,self.height-25)
+        for g,v in zip(rows,vals):
+            label=str(g.get("group","")); label=label if len(label)<=23 else label[:20]+"..."
+            c.setFillColor(colors.HexColor("#334155")); c.setFont("Helvetica",6.5); c.drawRightString(x0-span-8,y+2,label)
+            w=span*abs(v)/maxv
+            c.setFillColor(colors.HexColor("#16A078") if v>=0 else colors.HexColor("#D65B4A"))
+            c.rect(x0 if v>=0 else x0-w,y-2,w,7,fill=1,stroke=0)
+            c.setFillColor(colors.HexColor("#475569")); c.setFont("Helvetica",6); c.drawString(x0+span+8,y+1,f"{v:+,.2f}")
+            y-=15
+
+
 def generate_pdf(report, report_id):
     try:
         from reportlab.lib import colors
@@ -394,6 +577,33 @@ def generate_pdf(report, report_id):
                            ("FONTNAME", (0,3), (-1,3), "Helvetica-Bold"),
                            ("PADDING", (0,0), (-1,-1), 6)]))
     story += [t, Spacer(1, 6*mm)]
+
+    ai = report.get("ai_analysis", {})
+    if ai.get("text"):
+        story.append(Paragraph("AI Analysis & Observations", styles["Heading1"]))
+        story.append(Paragraph(f"Analysis model: {xml_escape(str(ai.get('model', '')))}", styles["Italic"]))
+        story.append(Spacer(1, 2*mm))
+        for raw_line in ai["text"].splitlines():
+            line = raw_line.strip()
+            if not line:
+                story.append(Spacer(1, 1.5*mm))
+            elif line.startswith("#"):
+                heading = line.lstrip("# ").strip()
+                story.append(Paragraph(xml_escape(heading), styles["Heading2"]))
+            elif line.startswith(("- ", "• ")):
+                story.append(Paragraph("&#8226; " + xml_escape(line[2:].strip()), styles["BodyText"]))
+            else:
+                story.append(Paragraph(xml_escape(line), styles["BodyText"]))
+        story.append(Spacer(1, 5*mm))
+
+    story.append(Paragraph("Pool Activity Visual Analysis", styles["Heading1"]))
+    story.append(Paragraph("Double-ring distribution, group-level buy/sell pressure and net BTN activity.", styles["Italic"]))
+    story.append(DoubleRingChart(report.get("groups", [])))
+    story.append(Spacer(1, 3*mm))
+    story.append(GroupPressureChart(report.get("groups", [])))
+    story.append(Spacer(1, 3*mm))
+    story.append(NetFlowChart(report.get("groups", [])))
+    story.append(PageBreak())
 
     def add_table(title, headers, rows, widths=None):
         story.append(Paragraph(title, styles["Heading2"]))
@@ -476,6 +686,7 @@ def execute_report(start_date, end_date, send_telegram=False, report_type="Custo
     if (end - start).days > 366:
         raise RuntimeError("The maximum custom report range is 366 days.")
     report = build_report_data(start_date, end_date)
+    report["ai_analysis"] = generate_ai_analysis(report)
     report_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
     pdf_path = generate_pdf(report, report_id)
     sent = False
@@ -494,6 +705,7 @@ def execute_report(start_date, end_date, send_telegram=False, report_type="Custo
             "filename": pdf_path.name}
     add_history(item)
     return {"report_id": report_id, "filename": pdf_path.name, "download_path": f"/crm-report-file?id={report_id}",
+            "ai_model": report.get("ai_analysis", {}).get("model", ""),
             "telegram_sent": sent, "telegram_error": telegram_error,
             "summary": {k: report[k] for k in ["swap_count", "wallet_count", "buy_count", "sell_count", "crm_wallets_matched", "crm_wallets_unmatched", "buy_btn", "sell_btn", "buy_usdc", "sell_usdc"]}}
 
