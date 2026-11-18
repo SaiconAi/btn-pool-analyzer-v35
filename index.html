@@ -150,17 +150,18 @@
  <section class="panel">
   <div class="toolbar"><div><div class="title">BTN Price Influence Report</div><div class="muted">Compare the Top 20 buyer and seller wallets against the CRM and generate a PDF report.</div></div><div class="pill">CRM · Google Sheets · Telegram</div></div>
   <div class="crm-grid">
-   <label class="crm-field">V35 Backend URL<input id="crmApiUrl" type="url" placeholder="https://your-v35-api.easypanel.host"></label>
-   <label class="crm-field">Administrator API Key<input id="crmAdminKey" type="password" placeholder="Private admin key"></label>
+   <label class="crm-field">V35 Backend URL<input id="crmApiUrl" type="url" readonly aria-readonly="true"></label>
+   <label class="crm-field">Administrator API Key<input id="crmAdminKey" type="password" placeholder="Enter the V35 admin key" autocomplete="current-password"></label>
   </div>
-  <div class="crm-help">These credentials connect this page to the separate V35 backend. The admin key is kept only in this browser session and is never included in the GitHub files.</div>
+  <label class="crm-check"><input id="crmRememberKey" type="checkbox"> Remember the administrator key on this browser</label>
+  <div class="crm-help">The backend URL is detected automatically. The admin key is never written to GitHub. If you enable “Remember”, it is stored in this browser profile so you do not need to enter it every time. Only enable this on your private computer.</div>
   <div class="crm-grid">
    <label class="crm-field">Start date<input id="crmStart" type="date"></label>
    <label class="crm-field">End date<input id="crmEnd" type="date"></label>
   </div>
   <label class="crm-check"><input id="crmSendTelegram" type="checkbox"> Send the generated PDF to the private Telegram group</label>
   <div class="crm-actions"><button id="crmGenerate" class="primary">Generate Custom Report (PDF)</button><button id="crmGenerateSend">Generate & Send to Telegram</button><button id="crmDownload" disabled>Download Last PDF</button></div>
-  <div id="crmStatus" class="crm-status">Enter the V35 backend URL and administrator key after the new backend service is deployed. V34 remains independent.</div>
+  <div id="crmStatus" class="crm-status">V35 backend detected automatically. Enter your administrator key once, or restore it from this browser if you previously chose Remember.</div>
   <div id="crmSummary" class="crm-summary hidden">
    <div class="metric"><div class="label">Pool Swaps</div><div id="crmSwaps" class="value">—</div></div>
    <div class="metric"><div class="label">Trader Wallets</div><div id="crmWallets" class="value">—</div></div>
@@ -897,8 +898,25 @@ document.addEventListener("click",e=>{
 
 // ---------------- CRM REPORT MODULE (V35) ----------------
 let crmLastReportId = "";
-function crmApiBase(){ return ($("crmApiUrl").value||"").trim().replace(/\/+$/,""); }
+function crmApiBase(){ return ($("crmApiUrl").value||window.location.origin).trim().replace(/\/+$/,""); }
 function crmAdminKey(){ return ($("crmAdminKey").value||"").trim(); }
+const CRM_KEY_STORAGE="btn_analyzer_v35_admin_key";
+function crmInitCredentials(){
+ const url=$("crmApiUrl"); if(url) url.value=window.location.origin;
+ const remember=$("crmRememberKey"); const key=$("crmAdminKey");
+ try{const saved=localStorage.getItem(CRM_KEY_STORAGE);if(saved){key.value=saved;remember.checked=true;}}
+ catch(e){console.warn("Browser storage unavailable; admin key will not be remembered.",e);}
+ remember.addEventListener("change",()=>{
+  try{if(remember.checked&&crmAdminKey())localStorage.setItem(CRM_KEY_STORAGE,crmAdminKey());
+   else if(!remember.checked)localStorage.removeItem(CRM_KEY_STORAGE);}
+  catch(e){crmSetStatus("This browser does not allow local credential storage. You can still enter the key for this session.");}
+ });
+ key.addEventListener("input",()=>{
+  if(!remember.checked)return;
+  try{if(crmAdminKey())localStorage.setItem(CRM_KEY_STORAGE,crmAdminKey());else localStorage.removeItem(CRM_KEY_STORAGE);}
+  catch(e){/* Keep the key in memory for this page only. */}
+ });
+}
 function crmSetStatus(message){ $("crmStatus").textContent=message; }
 function crmSetScheduleStatus(message){ $("crmScheduleStatus").textContent=message; }
 function crmAuthHeaders(){ return {"Authorization":"Bearer "+crmAdminKey(),"Content-Type":"application/json"}; }
@@ -967,6 +985,7 @@ $("crmLoadSettings").addEventListener("click",()=>crmLoadSettings().catch(()=>{}
 $("crmSaveSettings").addEventListener("click",crmSaveSettings);
 $("crmLoadHistory").addEventListener("click",crmLoadHistory);
 document.addEventListener("click",e=>{const b=e.target.closest("[data-crm-download]");if(b)crmDownload(b.getAttribute("data-crm-download")).catch(err=>crmSetStatus(err.message))});
+crmInitCredentials();
 crmDateDefaults();
 // ---------------- END CRM REPORT MODULE ----------------
 
