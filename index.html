@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTN Pool & Wallet Analyzer V35</title>
+<style>
+:root{--bg:#0d1420;--panel:#151f2e;--card:#1c293b;--border:#34445b;--text:#e9eef6;--muted:#aab8cb;--blue:#7895c2;--green:#65c7a4;--red:#df8290;--yellow:#d8bd72;--purple:#b49bd2;--orange:#d9a477}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}.wrap{width:min(1500px,96%);margin:24px auto 50px}.top,.toolbar,.pager{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:18px;min-width:0}.brand-logo{display:block;width:118px;height:auto;max-height:82px;object-fit:contain;flex:0 0 auto}.brand-copy{min-width:0}h1{margin:0}.muted{color:var(--muted)}.panel{margin-top:15px;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px}.title{font-size:20px;font-weight:700}.pill{padding:9px 13px;border:1px solid var(--border);border-radius:999px;background:#17243d}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--yellow)}.form{display:flex;gap:10px;margin-top:14px}.form input{flex:1;background:#0b1426;color:#fff;border:1px solid #34507b;border-radius:11px;padding:13px 15px;font-size:16px}button{border:1px solid #3a5076;background:#1b2a47;color:#fff;border-radius:10px;padding:11px 15px;cursor:pointer}.primary{background:var(--blue)}button:disabled{opacity:.45}.status{margin-top:12px;background:#151f34;padding:12px 14px;border-radius:10px;color:#a8b7d2}.progress{height:9px;background:#182843;border-radius:999px;overflow:hidden;margin-top:12px}.progress>div{height:100%;width:0;background:var(--blue);transition:width .2s}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-top:15px}.metric{background:var(--card);border-radius:12px;padding:13px}.label{font-size:11px;color:var(--muted);text-transform:uppercase}.value{font-size:19px;font-weight:700;margin-top:5px}.buy{color:var(--green)}.sell{color:var(--red)}.withdrawal{color:#73b8ff}.staking{color:var(--purple)}.unstake{color:var(--orange)}.transfer{color:var(--yellow)}.rankgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:15px}.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;margin-top:12px}table{width:100%;border-collapse:collapse}th{background:var(--card);color:var(--muted);font-size:11px;text-align:left;padding:11px}td{padding:11px;border-top:1px solid #243552;font-size:13px}.r{text-align:right}.hidden{display:none}a{color:#b5c7e2;text-decoration:underline;text-decoration-color:#647b9b;text-underline-offset:2px}a:hover{color:#e0e9f5}.filters{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.filters button.active{background:var(--blue)}.pageinfo{color:var(--muted)}@media(max-width:1200px){.grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.rankgrid{grid-template-columns:1fr}.form{flex-direction:column}}
+
+.tabs{display:flex;gap:8px;margin-top:16px;border-bottom:1px solid var(--border);padding-bottom:10px}
+.tab{background:#182538;color:#c1ccdc;border-color:#394a62}
+.tab.active{background:#344967;border-color:#7189aa;color:#fff}
+.pool-form{display:grid;grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) auto;gap:10px;align-items:end;margin-top:16px}
+.pool-form label{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px}
+.pool-form input,.search-input{min-width:0;background:#0f1927;color:var(--text);border:1px solid #40516a;border-radius:9px;padding:11px 12px;font-size:14px}
+.pool-form button{height:42px}
+.small-note{font-size:12px;line-height:1.55;margin:12px 2px}
+.wallet-action{padding:6px 9px;font-size:11px;background:#2a3a50;border-color:#536783}
+.wallet-link{color:#b8c9e2}
+.export-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:900px){.pool-form{grid-template-columns:1fr 1fr}.pool-form label:first-child{grid-column:1/-1}.pool-form button{grid-column:1/-1}}
+@media(max-width:560px){.pool-form{grid-template-columns:1fr}.pool-form button{grid-column:auto}.tabs button{flex:1}.brand{gap:11px}.brand-logo{width:82px;max-height:60px}.brand-copy h1{font-size:20px}}
+
+
+.crm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.crm-field{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px}
+.crm-field input,.crm-field select{min-width:0;background:#0f1927;color:var(--text);border:1px solid #40516a;border-radius:9px;padding:11px 12px;font-size:14px}
+.crm-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+.crm-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.crm-status{margin-top:12px;background:#151f34;padding:12px 14px;border-radius:10px;color:#a8b7d2;white-space:pre-wrap}
+.crm-help{font-size:12px;line-height:1.55;color:var(--muted)}
+.crm-check{display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;margin-top:10px}
+.crm-table{min-width:780px}
+@media(max-width:850px){.crm-grid{grid-template-columns:1fr}.crm-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="top">
+ <div class="brand"><img class="brand-logo" src="saicon-logo.png" alt="SAICON logo"><div class="brand-copy"><h1>BTN Pool & Wallet Analyzer V35</h1><div class="muted">Pool activity from The Graph · complete BTN wallet history from BaseScan · CRM reports</div></div></div>
+ <div id="badge" class="pill">Checking…</div>
+</div>
+
+
+<nav class="tabs" aria-label="Analyzer sections">
+ <button class="tab active" data-tab="pool">Pool Analyzer</button>
+ <button class="tab" data-tab="wallet">Wallet Analyzer</button>
+ <button class="tab" data-tab="crm">CRM Reports</button>
+</nav>
+
+<section id="poolPanel" class="panel">
+ <div class="toolbar">
+  <div>
+   <div class="title">Analyze BTN/USDC Pool</div>
+   <div class="muted">Loads pool swaps from your Cloudflare Worker, follows every cursor page, and ranks trader wallets without listing the pool/token/router addresses.</div>
+  </div>
+  <div class="pill">The Graph · Base network</div>
+ </div>
+ <div class="pool-form">
+  <label>Start date<input id="poolStart" type="date"></label>
+  <label>End date<input id="poolEnd" type="date"></label>
+  <button id="poolAnalyze" class="primary">Analyze Pool</button>
+ </div>
+ <div class="progress"><div id="poolBar"></div></div>
+ <div id="poolStatus" class="status">Select a date range and analyze the pool.</div>
+ <div id="poolResults" class="hidden">
+  <div class="grid">
+   <div class="metric"><div class="label">Total Swaps</div><div id="pMoves" class="value">—</div></div>
+   <div class="metric"><div class="label">Buy Swaps</div><div id="pBuyCount" class="value buy">—</div></div>
+   <div class="metric"><div class="label">Sell Swaps</div><div id="pSellCount" class="value sell">—</div></div>
+   <div class="metric"><div class="label">BTN Bought</div><div id="pBought" class="value buy">—</div></div>
+   <div class="metric"><div class="label">BTN Sold</div><div id="pSold" class="value sell">—</div></div>
+   <div class="metric"><div class="label">Unique Trader Wallets</div><div id="pWallets" class="value">—</div></div>
+   <div class="metric"><div class="label">Buy Volume (USDC)</div><div id="pBuyUsd" class="value">—</div></div>
+   <div class="metric"><div class="label">Sell Volume (USDC)</div><div id="pSellUsd" class="value">—</div></div>
+   <div class="metric"><div class="label">Net BTN Flow</div><div id="pNet" class="value">—</div></div>
+   <div class="metric"><div class="label">Indexed Block</div><div id="pBlock" class="value">—</div></div>
+  </div>
+  <div class="rankgrid">
+   <section class="panel">
+    <div class="title">Top 20 Buyer Wallets</div>
+    <div class="muted">Ranked by BTN bought. Select Analyze to inspect the wallet's complete BTN transfer history.</div>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>Wallet</th><th class="r">BTN Bought</th><th class="r">Swaps</th><th></th></tr></thead><tbody id="poolTopBuyers"></tbody></table></div>
+   </section>
+   <section class="panel">
+    <div class="title">Top 20 Seller Wallets</div>
+    <div class="muted">Ranked by BTN sold. Contract addresses used by the swap route are not treated as traders.</div>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>Wallet</th><th class="r">BTN Sold</th><th class="r">Swaps</th><th></th></tr></thead><tbody id="poolTopSellers"></tbody></table></div>
+   </section>
+  </div>
+  <section class="panel">
+   <div class="toolbar"><div class="title">Pool Swap History</div><div class="export-actions"><button id="poolExport">Export All Swaps to CSV</button><button id="poolPdf">Export PDF Report</button></div></div>
+   <div class="filters">
+    <button class="active" data-pfilter="ALL">All</button>
+    <button data-pfilter="BUY">Buys</button>
+    <button data-pfilter="SELL">Sells</button>
+    <input id="poolWalletSearch" class="search-input" placeholder="Filter by wallet address">
+   </div>
+   <div class="table-wrap"><table><thead><tr><th>Date / Time (UTC)</th><th>Type</th><th>Trader Wallet</th><th class="r">BTN</th><th class="r">USDC</th><th class="r">USD Value</th><th>TX</th></tr></thead><tbody id="poolHistory"></tbody></table></div>
+   <div class="pager"><div><button id="poolPrev">Previous</button> <button id="poolNext">Next</button></div><div id="poolPageInfo" class="pageinfo"></div></div>
+  </section>
+  <div class="muted small-note">Wallet identification uses the transaction-origin wallet returned by the subgraph. The pool, BTN and USDC token contracts, and the known Uniswap Universal Router are excluded from trader rankings. If a different contract itself originates a transaction, it may require separate contract verification.</div>
+ </div>
+</section>
+
+<div id="walletPanel" class="hidden">
+<section class="panel">
+ <div class="title">Analyze BTN Wallet</div>
+ <div class="muted">Reads the BaseScan BTN table, detects BaseScan's reported total transfer count, calculates the required pages, and loads every page before declaring the analysis complete.</div>
+ <form id="form" class="form">
+  <input id="wallet" value="0xee46892b33bef959a38ef2acfd9b0258663aa7cc">
+  <button id="analyze" class="primary">Analyze Wallet</button>
+ </form>
+ <div class="progress"><div id="bar"></div></div>
+ <div id="status" class="status">Waiting.</div>
+</section>
+
+<section id="results" class="hidden">
+<div class="grid">
+ <div class="metric"><div class="label">BTN Movements</div><div id="moves" class="value">—</div></div>
+ <div class="metric"><div class="label">BTN Purchased</div><div id="bought" class="value buy">—</div></div>
+ <div class="metric"><div class="label">BTN Sold</div><div id="sold" class="value sell">—</div></div>
+ <div class="metric"><div class="label">BTN Withdrawals</div><div id="withdrawals" class="value withdrawal">—</div></div>
+ <div class="metric"><div class="label">BTN Staking</div><div id="staking" class="value staking">—</div></div>
+ <div class="metric"><div class="label">BTN Unstake</div><div id="unstake" class="value unstake">—</div></div>
+ <div class="metric"><div class="label">Total Transfer In</div><div id="transferIn" class="value transfer">—</div></div>
+ <div class="metric"><div class="label">Total Transfer Out</div><div id="transferOut" class="value transfer">—</div></div>
+ <div class="metric"><div class="label">Unique Source Wallets</div><div id="uniqueSources" class="value">—</div></div>
+ <div class="metric"><div class="label">Unique Destination Wallets</div><div id="uniqueDestinations" class="value">—</div></div>
+</div>
+
+<div class="rankgrid">
+ <section class="panel"><div class="title">Top 20 BTN Sources</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Source</th><th class="r">BTN Received</th><th class="r">Transfers</th></tr></thead><tbody id="topIn"></tbody></table></div></section>
+ <section class="panel"><div class="title">Top 20 BTN Destinations</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Destination</th><th class="r">BTN Sent</th><th class="r">Transfers</th></tr></thead><tbody id="topOut"></tbody></table></div></section>
+</div>
+
+<section class="panel">
+ <div class="toolbar"><div class="title">BTN Transfer History</div><div class="export-actions"><button id="export">Export All to CSV</button><button id="walletPdf">Export PDF Report</button></div></div>
+ <div class="filters"><button class="active" data-filter="ALL">All</button><button data-filter="BUY">Buys</button><button data-filter="SELL">Sells</button><button data-filter="WITHDRAWAL">Withdrawals</button><button data-filter="STAKING">Staking</button><button data-filter="UNSTAKE">Unstake</button><button data-filter="TRANSFER">Transfers</button></div>
+ <div class="table-wrap"><table><thead><tr><th>Block</th><th>Age / Date</th><th>Action</th><th>Type</th><th class="r">BTN</th><th>From</th><th>To</th><th>TX</th></tr></thead><tbody id="history"></tbody></table></div>
+ <div class="pager"><div><button id="prev">Previous</button> <button id="next">Next</button></div><div id="pageInfo" class="pageinfo"></div></div>
+</section>
+</section>
+</div>
+</div>
+
+
+<section id="crmPanel" class="hidden">
+ <section class="panel">
+  <div class="toolbar"><div><div class="title">BTN Price Influence Report</div><div class="muted">Compare the Top 20 buyer and seller wallets against the CRM and generate a PDF report.</div></div><div class="pill">CRM · Google Sheets · Telegram</div></div>
+  <div class="crm-grid">
+   <label class="crm-field">V35 Backend URL<input id="crmApiUrl" type="url" placeholder="https://your-v35-api.easypanel.host"></label>
+   <label class="crm-field">Administrator API Key<input id="crmAdminKey" type="password" placeholder="Private admin key"></label>
+  </div>
+  <div class="crm-help">These credentials connect this page to the separate V35 backend. The admin key is kept only in this browser session and is never included in the GitHub files.</div>
+  <div class="crm-grid">
+   <label class="crm-field">Start date<input id="crmStart" type="date"></label>
+   <label class="crm-field">End date<input id="crmEnd" type="date"></label>
+  </div>
+  <label class="crm-check"><input id="crmSendTelegram" type="checkbox"> Send the generated PDF to the private Telegram group</label>
+  <div class="crm-actions"><button id="crmGenerate" class="primary">Generate Custom Report (PDF)</button><button id="crmGenerateSend">Generate & Send to Telegram</button><button id="crmDownload" disabled>Download Last PDF</button></div>
+  <div id="crmStatus" class="crm-status">Enter the V35 backend URL and administrator key after the new backend service is deployed. V34 remains independent.</div>
+  <div id="crmSummary" class="crm-summary hidden">
+   <div class="metric"><div class="label">Pool Swaps</div><div id="crmSwaps" class="value">—</div></div>
+   <div class="metric"><div class="label">Trader Wallets</div><div id="crmWallets" class="value">—</div></div>
+   <div class="metric"><div class="label">CRM Matched</div><div id="crmMatched" class="value buy">—</div></div>
+   <div class="metric"><div class="label">Not in CRM</div><div id="crmUnmatched" class="value sell">—</div></div>
+  </div>
+ </section>
+ <section class="panel">
+  <div class="title">Automatic Report Schedule</div>
+  <div class="muted">Weekly and monthly schedules are independent. Reports are sent automatically to the configured Telegram group.</div>
+  <div class="crm-grid">
+   <div>
+    <label class="crm-check"><input id="crmWeeklyEnabled" type="checkbox"> Enable weekly report</label>
+    <label class="crm-field" style="margin-top:10px">Delivery day<select id="crmWeeklyDay"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option selected>Friday</option><option>Saturday</option><option>Sunday</option></select></label>
+    <div class="crm-help">Analyzes the previous 7 completed days.</div>
+   </div>
+   <div>
+    <label class="crm-check"><input id="crmMonthlyEnabled" type="checkbox"> Enable monthly report</label>
+    <label class="crm-field" style="margin-top:10px">Delivery day<select id="crmMonthlyDay"><option value="1">1st day</option><option value="5">5th day</option><option value="10">10th day</option><option value="15">15th day</option><option value="20">20th day</option><option value="25">25th day</option><option value="last">Last day</option></select></label>
+    <div class="crm-help">Analyzes the previous completed calendar month.</div>
+   </div>
+  </div>
+  <div class="crm-grid">
+   <label class="crm-field">Delivery time (24-hour)<input id="crmSendTime" type="time" value="09:00"></label>
+   <label class="crm-field">Time zone<select id="crmTimezone"><option value="America/Caracas">America/Caracas</option><option value="America/New_York">America/New_York</option><option value="America/Los_Angeles">America/Los_Angeles</option><option value="UTC">UTC</option></select></label>
+  </div>
+  <div class="crm-actions"><button id="crmLoadSettings">Load Schedule</button><button id="crmSaveSettings" class="primary">Save Schedule</button><button id="crmLoadHistory">Refresh Report History</button></div>
+  <div id="crmScheduleStatus" class="crm-status">Schedule settings have not been loaded yet.</div>
+ </section>
+ <section class="panel">
+  <div class="title">Report History</div>
+  <div class="table-wrap"><table class="crm-table"><thead><tr><th>Created (UTC)</th><th>Report</th><th>Period</th><th>Swaps</th><th>Telegram</th><th>File</th></tr></thead><tbody id="crmHistoryRows"><tr><td colspan="6" class="muted">Load report history to view previous reports.</td></tr></tbody></table></div>
+ </section>
+</section>
+
+<script>
+(()=>{
+const BTN="0x6c417845facc97ebce84fbfee9a7460b0e5cfcf3";
+const POOL="0xc069bb46ba971c3bf5424fb505525db3006d8091";
+const WD="0x017088416c4b13a2c1c3fa470fd3aa16f844bca2";
+const ST="0x5b2b0d30a712d36605bc263c49ec65e73f888bc7";
+const $=x=>document.getElementById(x),low=x=>(x||"").toLowerCase();
+const fmt=(n,d=8)=>Number(n).toLocaleString(undefined,{maximumFractionDigits:d});
+const short=a=>a&&a.length>12?a.slice(0,6)+"…"+a.slice(-4):(a||"—");
+let rows=[],filtered=[],filter="ALL",uiPage=1;
+const uiPageSize=200;
+
+const API_BASE = "https://btn-analyzer-btn-analyzer-api.e7jo7f.easypanel.host";
+
+async function J(u){
+ const apiUrl = new URL(u, API_BASE);
+ const r=await fetch(apiUrl.toString(),{cache:"no-store"}),t=await r.text();
+ let j;try{j=JSON.parse(t)}catch{throw Error("Invalid API server response")}
+ if(!r.ok||!j.ok)throw Error(j.error||`HTTP ${r.status}`);
+ return j;
+}
+
+
+function hrefAddress(href){
+ const m=(href||"").match(/\/address\/(0x[a-fA-F0-9]{40})(?:[/?#]|$)/i);
+ return m?m[1]:"";
+}
+function hrefTx(href){
+ const m=(href||"").match(/\/tx\/(0x[a-fA-F0-9]{64})(?:[/?#]|$)/i);
+ return m?m[1]:"";
+}
+function hrefBlock(href){
+ const m=(href||"").match(/\/block\/(\d+)(?:[/?#]|$)/i);
+ return m?Number(m[1]):0;
+}
+function cleanText(el){
+ return (el?.innerText||el?.textContent||"").replace(/\s+/g," ").trim();
+}
+function isSwapAction(s){
+ s=low(s);
+ return s.includes("swap")||
+        s.includes("exact input")||
+        s.includes("exactinput")||
+        s.includes("exact output")||
+        s.includes("exactoutput")||
+        s.includes("multicall")||
+        s.includes("execute")||
+        s.includes("transit");
+}
+function classify(r,w){
+ const f=low(r.from),t=low(r.to),x=low(w);
+ if(t===x&&f===WD)return"WITHDRAWAL";
+ if(f===x&&t===ST)return"STAKING";
+ if(t===x&&f===ST)return"UNSTAKE";
+ if(t===x&&f===POOL)return"BUY";
+ if(f===x&&t===POOL)return"SELL";
+ if(f===x&&isSwapAction(r.action))return"SELL";
+ if(t===x&&isSwapAction(r.action))return"BUY";
+ if(t===x)return"TRANSFER IN";
+ if(f===x)return"TRANSFER OUT";
+ return"OTHER";
+}
+
+function addressesInRow(tr){
+ const out=[];
+ for(const a of tr.querySelectorAll("a[href]")){
+   const ad=hrefAddress(a.getAttribute("href"));
+   if(ad && !out.some(x=>low(x)===low(ad)))out.push(ad);
+ }
+
+ // BaseScan sometimes stores the full address in attributes rather than href text.
+ for(const el of tr.querySelectorAll("[data-highlight-target],[data-clipboard-text],[data-bs-title],[title]")){
+   for(const attr of ["data-highlight-target","data-clipboard-text","data-bs-title","title"]){
+     const v=el.getAttribute(attr)||"";
+     const matches=v.match(/0x[a-fA-F0-9]{40}/g)||[];
+     for(const ad of matches){
+       if(!out.some(x=>low(x)===low(ad)))out.push(ad);
+     }
+   }
+ }
+ return out;
+}
+
+function amountCandidates(tr,block){
+ const result=[];
+ const tds=[...tr.querySelectorAll(":scope > td")];
+
+ tds.forEach((td,idx)=>{
+   const text=cleanText(td).replace(/,/g,"");
+   if(!text)return;
+
+   // Skip obvious fields that are not an amount.
+   if(/0x[a-fA-F0-9]{8,}/.test(text))return;
+   if(/\b(IN|OUT)\b/i.test(text))return;
+   if(/swap|exact input|exact output|transfer|multicall|execute/i.test(text))return;
+
+   const nums=text.match(/-?\d+(?:\.\d+)?/g)||[];
+   for(const raw of nums){
+     const n=Number(raw);
+     if(!Number.isFinite(n) || n<0)continue;
+
+     // Exclude the block number itself.
+     if(block && Math.abs(n-block)<0.000001)continue;
+
+     // Exclude Unix timestamps (the bug in V28).
+     if(n>=1_400_000_000 && n<=2_200_000_000)continue;
+
+     // Exclude YYYY/MM/DD-like components when a cell is clearly a date.
+     if(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/.test(text))continue;
+
+     result.push({idx,n,text});
+   }
+ });
+ return result;
+}
+
+function pickAmount(tr,block){
+ const tds=[...tr.querySelectorAll(":scope > td")];
+
+ // First choice: the rightmost visible numeric cell that is not a timestamp/block.
+ const candidates=amountCandidates(tr,block);
+ if(candidates.length){
+   candidates.sort((a,b)=>b.idx-a.idx);
+
+   // Prefer a candidate from the last 3 cells of the row.
+   const nearEnd=candidates.find(c=>c.idx>=Math.max(0,tds.length-3));
+   if(nearEnd)return nearEnd.n;
+
+   return candidates[0].n;
+ }
+
+ return 0;
+}
+
+function findAction(tr){
+ const texts=[...tr.querySelectorAll(":scope > td")].map(cleanText);
+ for(const s of texts){
+   if(/swap|exact input|exactoutput|exact output|exactinput|transfer|multicall|execute|transit/i.test(s)){
+     return s.replace(/\s+/g," ").trim();
+   }
+ }
+ return "";
+}
+
+function findAge(tr){
+ for(const el of tr.querySelectorAll("[data-bs-title],[title]")){
+   const v=el.getAttribute("data-bs-title")||el.getAttribute("title")||"";
+   if(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/.test(v))return v;
+ }
+ const texts=[...tr.querySelectorAll(":scope > td")].map(cleanText);
+ for(const s of texts){
+   if(/\b(?:sec|min|hour|day|month|year)s?\s+ago\b/i.test(s))return s;
+   if(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/.test(s))return s;
+ }
+ return "";
+}
+
+function parsePage(html,wallet){
+ const doc=new DOMParser().parseFromString(html,"text/html");
+ const trs=[...doc.querySelectorAll("tbody tr")];
+ const out=[];
+
+ for(const tr of trs){
+   const rowText=cleanText(tr);
+   if(!rowText)continue;
+
+   let tx="";
+   let block=0;
+
+   for(const a of tr.querySelectorAll("a[href]")){
+     const href=a.getAttribute("href")||"";
+     if(!tx)tx=hrefTx(href);
+     if(!block)block=hrefBlock(href);
+   }
+
+   if(!tx)continue;
+
+   const isOut=/(^|\s)OUT(\s|$)/i.test(rowText);
+   const isIn=/(^|\s)IN(\s|$)/i.test(rowText);
+
+   // Find addresses that belong to the actual transfer row.
+   let ads=addressesInRow(tr)
+     .filter(a=>low(a)!==low(BTN))
+     .filter(a=>!low(a).startsWith("0x000000000000000000000000"));
+
+   // Remove duplicates already handled above.
+   const wlow=low(wallet);
+   const others=ads.filter(a=>low(a)!==wlow);
+
+   let from="",to="";
+
+   // BaseScan itself tells us the direction, so trust IN/OUT first.
+   if(isOut){
+     from=wallet;
+     if(others.length)to=others[others.length-1];
+   }else if(isIn){
+     to=wallet;
+     if(others.length)from=others[0];
+   }else{
+     // Fallback only when BaseScan omitted the badge.
+     if(ads.length>=2){
+       from=ads[0];
+       to=ads[ads.length-1];
+     }else if(ads.length===1){
+       if(low(ads[0])===wlow)continue;
+       from=ads[0];
+       to=wallet;
+     }
+   }
+
+   if(!from||!to)continue;
+
+   const action=findAction(tr);
+   const amount=pickAmount(tr,block);
+   const age=findAge(tr);
+
+   // Reject obviously broken amount extraction rather than showing nonsense.
+   if(!Number.isFinite(amount) || amount<0 || amount>1_000_000_000){
+     continue;
+   }
+
+   const r={
+     block,
+     age,
+     action,
+     btn:amount,
+     from,
+     to,
+     tx,
+     rawFingerprint:(tr.innerHTML||"").replace(/\s+/g," ").trim(),
+     type:""
+   };
+   r.type=classify(r,wallet);
+   out.push(r);
+ }
+
+ return out;
+}
+
+
+function strHash(s){
+ let h=2166136261;
+ for(let i=0;i<s.length;i++){
+   h^=s.charCodeAt(i);
+   h=Math.imul(h,16777619);
+ }
+ return (h>>>0).toString(16);
+}
+
+async function analyze(wallet){
+ rows=[];
+ $("analyze").disabled=true;
+ $("results").classList.add("hidden");
+ $("bar").style.width="2%";
+
+ try{
+   $("status").textContent="Opening BaseScan token session…";
+   const init=await J(`/basescan-init?wallet=${encodeURIComponent(wallet)}`);
+   const sid=init.sid;
+
+   const map=new Map();
+
+   // Page 1 determines the real BaseScan total and actual rows-per-page.
+   $("status").textContent="Reading BaseScan page 1 and detecting total transfer count…";
+   const first=await J(`/basescan-page?wallet=${encodeURIComponent(wallet)}&sid=${encodeURIComponent(sid)}&page=1`);
+   const firstRows=parsePage(first.html,wallet);
+
+   if(!firstRows.length){
+     throw Error("BaseScan returned no BTN transfer rows for this wallet.");
+   }
+
+   const rowsPerPage=firstRows.length;
+   const reportedTotal=Number(first.total_txns||0);
+
+   let expectedPages=0;
+   if(Number(first.total_pages)>0){
+     expectedPages=Number(first.total_pages);
+   }else if(reportedTotal>0){
+     expectedPages=Math.ceil(reportedTotal/rowsPerPage);
+   }
+
+   // If BaseScan does not expose a total, fall back to sequential paging,
+   // but never silently stop just because one page duplicates another.
+   const hasKnownTotal=expectedPages>0;
+
+   function addParsed(parsed,pageNo){
+     let added=0;
+     parsed.forEach((r,rowNo)=>{
+       // The raw row fingerprint is substantially safer than tx/from/to/amount:
+       // one transaction may emit multiple BTN Transfer logs.
+       const key=strHash(
+         `${r.tx}|${r.block}|${r.from}|${r.to}|${r.btn}|${r.rawFingerprint}`
+       );
+       if(!map.has(key)){
+         map.set(key,r);
+         added++;
+       }
+     });
+     return added;
+   }
+
+   addParsed(firstRows,1);
+
+   if(hasKnownTotal){
+     $("status").textContent=
+       `BaseScan reports ${reportedTotal ? reportedTotal.toLocaleString() : "an unknown total"} BTN transfers · `+
+       `${expectedPages.toLocaleString()} pages expected · page 1 loaded`;
+
+     for(let p=2;p<=expectedPages;p++){
+       const pct=Math.min(96,5+91*(p-1)/Math.max(1,expectedPages));
+       $("bar").style.width=pct+"%";
+       $("status").textContent=
+         `BaseScan reports ${reportedTotal ? reportedTotal.toLocaleString() : "—"} transfers · `+
+         `loading page ${p.toLocaleString()} of ${expectedPages.toLocaleString()} · `+
+         `${map.size.toLocaleString()} unique rows collected`;
+
+       let j;
+       let parsed=[];
+       let success=false;
+
+       // Retry a page twice if BaseScan temporarily gives an empty fragment.
+       for(let attempt=1;attempt<=3;attempt++){
+         j=await J(`/basescan-page?wallet=${encodeURIComponent(wallet)}&sid=${encodeURIComponent(sid)}&page=${p}`);
+         parsed=parsePage(j.html,wallet);
+         if(parsed.length){
+           success=true;
+           break;
+         }
+         await new Promise(r=>setTimeout(r,700*attempt));
+       }
+
+       if(!success){
+         throw Error(
+           `BaseScan reports ${reportedTotal||"more"} transfers, but page ${p} returned no rows after 3 attempts. `+
+           `Loaded ${map.size} rows before stopping.`
+         );
+       }
+
+       addParsed(parsed,p);
+     }
+   }else{
+     // Diagnostic fallback when totaltxns is absent.
+     let emptyStreak=0;
+     for(let p=2;p<=5000;p++){
+       $("status").textContent=
+         `BaseScan did not expose total count · loading page ${p.toLocaleString()} · `+
+         `${map.size.toLocaleString()} unique rows collected`;
+
+       const j=await J(`/basescan-page?wallet=${encodeURIComponent(wallet)}&sid=${encodeURIComponent(sid)}&page=${p}`);
+       const parsed=parsePage(j.html,wallet);
+
+       if(!parsed.length){
+         emptyStreak++;
+         if(emptyStreak>=2)break;
+         continue;
+       }
+       emptyStreak=0;
+       addParsed(parsed,p);
+       $("bar").style.width=Math.min(94,5+(p%89))+"%";
+     }
+   }
+
+   rows=[...map.values()].sort((a,b)=>b.block-a.block);
+
+   render(wallet);
+   $("results").classList.remove("hidden");
+   $("bar").style.width="100%";
+
+   const discrepancy=reportedTotal>0 ? reportedTotal-rows.length : 0;
+   $("status").textContent=
+     `Complete: ${rows.length.toLocaleString()} unique BTN movements loaded. `+
+     (reportedTotal>0
+       ? `BaseScan reported ${reportedTotal.toLocaleString()} transfers · ${expectedPages.toLocaleString()} pages expected.`
+       : `BaseScan did not expose a total count.`)+
+     (discrepancy>0
+       ? ` Warning: ${discrepancy.toLocaleString()} reported rows were not unique after parsing.`
+       : "");
+
+ }catch(e){
+   $("status").textContent="Error: "+e.message;
+   $("bar").style.width="0%";
+ }finally{
+   $("analyze").disabled=false;
+ }
+}
+
+function sum(t){return rows.filter(r=>r.type===t).reduce((s,r)=>s+r.btn,0)}
+function agg(dir,w){
+ const m=new Map(),x=low(w);
+ for(const r of rows){
+   const inc=low(r.to)===x;
+   if(dir==="in"&&!inc)continue;
+   if(dir==="out"&&inc)continue;
+   const a=inc?r.from:r.to,k=low(a);
+   if(!k)continue;
+   if(!m.has(k))m.set(k,{address:a,total:0,count:0});
+   const v=m.get(k);v.total+=r.btn;v.count++;
+ }
+ return[...m.values()].sort((a,b)=>b.total-a.total).slice(0,20);
+}
+function rank(id,a){
+ $(id).innerHTML=a.map((x,i)=>`<tr><td>${i+1}</td><td><a target="_blank" href="https://basescan.org/address/${x.address}">${short(x.address)}</a></td><td class="r">${fmt(x.total)}</td><td class="r">${x.count}</td></tr>`).join("");
+}
+function render(w){
+ $("moves").textContent=rows.length;
+ $("bought").textContent=fmt(sum("BUY"));
+ $("sold").textContent=fmt(sum("SELL"));
+ $("withdrawals").textContent=fmt(sum("WITHDRAWAL"));
+ $("staking").textContent=fmt(sum("STAKING"));
+ $("unstake").textContent=fmt(sum("UNSTAKE"));
+ $("transferIn").textContent=fmt(sum("TRANSFER IN"));
+ $("transferOut").textContent=fmt(sum("TRANSFER OUT"));
+ const x=low(w);
+ $("uniqueSources").textContent=new Set(rows.filter(r=>low(r.to)===x).map(r=>low(r.from))).size;
+ $("uniqueDestinations").textContent=new Set(rows.filter(r=>low(r.from)===x).map(r=>low(r.to))).size;
+ rank("topIn",agg("in",w));rank("topOut",agg("out",w));apply();
+}
+function apply(){
+ filtered=filter==="ALL"?rows:
+   filter==="TRANSFER"?rows.filter(r=>r.type==="TRANSFER IN"||r.type==="TRANSFER OUT"):
+   rows.filter(r=>r.type===filter);
+ uiPage=1;draw();
+}
+function draw(){
+ const pages=Math.max(1,Math.ceil(filtered.length/uiPageSize));
+ const part=filtered.slice((uiPage-1)*uiPageSize,uiPage*uiPageSize);
+ $("history").innerHTML=part.map(r=>`<tr>
+   <td>${r.block||"—"}</td>
+   <td>${r.age||"—"}</td>
+   <td>${r.action||"—"}</td>
+   <td>${r.type}</td>
+   <td class="r">${fmt(r.btn)}</td>
+   <td>${short(r.from)}</td>
+   <td>${short(r.to)}</td>
+   <td><a target="_blank" href="https://basescan.org/tx/${r.tx}">${short(r.tx)}</a></td>
+ </tr>`).join("");
+ $("pageInfo").textContent=`${filtered.length.toLocaleString()} records · Page ${uiPage} of ${pages}`;
+ $("prev").disabled=uiPage<=1;$("next").disabled=uiPage>=pages;
+}
+function esc(v){return `"${String(v??"").replaceAll('"','""')}"`}
+function csv(){
+ const L=["block,date_or_age,action,type,btn,from,to,tx"];
+ for(const r of rows)L.push([r.block,r.age,r.action,r.type,r.btn,r.from,r.to,r.tx].map(esc).join(","));
+ const b=new Blob([L.join("\n")],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");
+ a.href=URL.createObjectURL(b);a.download=`BTN_wallet_basescan_${$("wallet").value}_${rows.length}.csv`;a.click();
+}
+
+function printReport(title,subtitle,metrics,sections,note=""){
+ const win=window.open("","_blank");
+ if(!win){alert("The PDF report window was blocked. Allow pop-ups for this site and try again.");return}
+ const safe=v=>String(v??"—").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+ const metricHtml=metrics.map(([label,value])=>`<div class="metric"><div class="label">${safe(label)}</div><div class="value">${safe(value)}</div></div>`).join("");
+ const sectionsHtml=sections.map(section=>{
+  const head=section.headers.map(h=>`<th>${safe(h)}</th>`).join("");
+  const body=section.rows.length?section.rows.map(row=>`<tr>${row.map(cell=>`<td>${safe(cell)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${section.headers.length}">No records</td></tr>`;
+  return `<section><h2>${safe(section.title)}</h2><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></section>`;
+ }).join("");
+ const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safe(title)}</title><style>
+ @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;font-size:10px}h1{font-size:21px;margin:0 0 5px}h2{font-size:14px;margin:18px 0 7px}.subtitle{color:#526176;margin-bottom:14px}.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:12px 0 18px}.metric{border:1px solid #cbd3df;border-radius:6px;padding:8px;min-width:0}.label{font-size:8px;color:#58677c;text-transform:uppercase}.value{font-size:13px;font-weight:bold;margin-top:4px;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:auto}th{background:#e9eef5;text-align:left;font-size:8px;padding:6px;border:1px solid #cbd3df}td{font-size:8px;padding:5px;border:1px solid #d8dee8;overflow-wrap:anywhere}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}section{margin-top:12px}.note{margin-top:14px;color:#59677b;font-size:9px}.footer{margin-top:18px;padding-top:7px;border-top:1px solid #ccd3dd;color:#68758a;font-size:8px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ 
+.crm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.crm-field{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px}
+.crm-field input,.crm-field select{min-width:0;background:#0f1927;color:var(--text);border:1px solid #40516a;border-radius:9px;padding:11px 12px;font-size:14px}
+.crm-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+.crm-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.crm-status{margin-top:12px;background:#151f34;padding:12px 14px;border-radius:10px;color:#a8b7d2;white-space:pre-wrap}
+.crm-help{font-size:12px;line-height:1.55;color:var(--muted)}
+.crm-check{display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;margin-top:10px}
+.crm-table{min-width:780px}
+@media(max-width:850px){.crm-grid{grid-template-columns:1fr}.crm-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+</style></head><body><h1>${safe(title)}</h1><div class="subtitle">${safe(subtitle)} · Generated ${safe(new Date().toLocaleString())}</div><div class="metrics">${metricHtml}</div>${sectionsHtml}${note?`<div class="note">${safe(note)}</div>`:""}<div class="footer">SAICON · BTN Pool & Wallet Analyzer V34</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+ win.document.open();win.document.write(html);win.document.close();win.focus();
+}
+
+function exportWalletPdf(){
+ if(!rows.length){alert("Analyze a wallet before exporting the PDF report.");return}
+ const wallet=$("wallet").value.trim();
+ const metrics=[
+  ["Wallet",wallet],["BTN movements",$("moves").textContent],["BTN purchased",$("bought").textContent],
+  ["BTN sold",$("sold").textContent],["BTN withdrawals",$("withdrawals").textContent],
+  ["BTN staking",$("staking").textContent],["BTN unstake",$("unstake").textContent],
+  ["Total transfer in",$("transferIn").textContent],["Total transfer out",$("transferOut").textContent],
+  ["Unique source wallets",$("uniqueSources").textContent],["Unique destination wallets",$("uniqueDestinations").textContent]
+ ];
+ const sources=agg("in",wallet).map((x,i)=>[i+1,x.address,fmt(x.total),x.count]);
+ const destinations=agg("out",wallet).map((x,i)=>[i+1,x.address,fmt(x.total),x.count]);
+ const history=rows.map(r=>[r.block,r.age,r.action,r.type,fmt(r.btn),r.from,r.to,r.tx]);
+ printReport("BTN Wallet Analyzer V34 Report",`Wallet: ${wallet} · ${rows.length.toLocaleString()} BTN movements`,metrics,[
+  {title:"Top 20 BTN Sources",headers:["#","Source wallet","BTN received","Transfers"],rows:sources},
+  {title:"Top 20 BTN Destinations",headers:["#","Destination wallet","BTN sent","Transfers"],rows:destinations},
+  {title:"BTN Transfer History",headers:["Block","Age / Date","Action","Type","BTN","From","To","Transaction hash"],rows:history}
+ ]);
+}
+
+
+// ---------------- POOL ANALYZER (The Graph via Cloudflare Worker) ----------------
+const POOL_ID = "0xc069bb46ba971c3bf5424fb505525db3006d8091";
+const USDC_TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+const KNOWN_ROUTE_CONTRACTS = new Set([
+  POOL_ID,
+  BTN,
+  USDC_TOKEN,
+  "0x2626664c2603336e57b271c5c0b26f421741e481" // Uniswap Universal Router on Base
+]);
+let poolRows = [], poolFiltered = [], poolFilter = "ALL", poolPage = 1;
+const poolPageSize = 100;
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[c]));
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const poolShort = a => a && a.length > 12 ? a.slice(0,6)+"…"+a.slice(-4) : (a || "—");
+const poolNum = n => Number(n || 0).toLocaleString(undefined,{maximumFractionDigits:6});
+const poolDate = s => {
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? String(s || "—") : d.toISOString().replace("T"," ").replace(".000Z"," UTC");
+};
+function initPoolDates(){
+  const end = new Date();
+  const start = new Date(end.getTime() - 7*24*60*60*1000);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  $("poolStart").value = iso(start);
+  $("poolEnd").value = iso(end);
+}
+async function fetchPoolPage(start,end,limit,cursor){
+  const u = new URL("https://btn-pool-api.luisedt.workers.dev");
+  u.searchParams.set("start",start);
+  u.searchParams.set("end",end);
+  u.searchParams.set("limit",String(limit));
+  if(cursor)u.searchParams.set("cursor",cursor);
+  const r = await fetch(u.toString(),{cache:"no-store"});
+  const body = await r.text();
+  let j;
+  try{j=JSON.parse(body)}catch{throw Error(`Worker returned non-JSON response (HTTP ${r.status}).`)}
+  if(!r.ok || !j.ok)throw Error(j.error || `Worker HTTP ${r.status}`);
+  return j;
+}
+function validTraderAddress(a){
+  return /^0x[a-fA-F0-9]{40}$/.test(a || "") && !KNOWN_ROUTE_CONTRACTS.has(low(a));
+}
+async function analyzePool(){
+  const start = $("poolStart").value, end = $("poolEnd").value;
+  if(!start || !end || start>end){$("poolStatus").textContent="Select a valid start and end date.";return}
+  $("poolAnalyze").disabled=true;
+  $("poolResults").classList.add("hidden");
+  $("poolBar").style.width="1%";
+  poolRows=[];
+  try{
+    let cursor=null, page=0, indexedBlock=null, indexingErrors=false;
+    const collected=new Map();
+    while(true){
+      page++;
+      if(page>10000)throw Error("Safety stop: more than 10,000 pages. Narrow the date range.");
+      $("poolStatus").textContent=`Loading pool swaps · page ${page} · ${collected.size.toLocaleString()} swaps collected…`;
+      $("poolBar").style.width=Math.min(95,Math.max(2,page/(page+2)*100))+"%";
+      const j=await fetchPoolPage(start,end,1000,cursor);
+      indexedBlock=j.indexedBlock ?? indexedBlock;
+      indexingErrors=Boolean(j.indexingErrors);
+      const batch=Array.isArray(j.swaps)?j.swaps:[];
+      for(const s of batch){
+        const key=s.id || `${s.transaction||""}:${s.logIndex||""}`;
+        if(key && !collected.has(key))collected.set(key,s);
+      }
+      if(!j.hasMore)break;
+      if(!j.nextCursor)throw Error("Worker reports more data but did not return nextCursor. Pagination cannot safely continue.");
+      cursor=j.nextCursor;
+      await wait(120);
+    }
+    poolRows=[...collected.values()].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    renderPool(indexedBlock,indexingErrors);
+    $("poolResults").classList.remove("hidden");
+    $("poolBar").style.width="100%";
+    $("poolStatus").textContent=`Complete: ${poolRows.length.toLocaleString()} unique pool swaps loaded from ${start} to ${end}.`+
+      (indexingErrors?" Warning: The subgraph reports indexing errors.":" Indexing status: clean.")+
+      ` Indexed block: ${indexedBlock ?? "not provided"}.`;
+  }catch(e){
+    $("poolStatus").textContent="Error: "+e.message;
+    $("poolBar").style.width="0%";
+  }finally{
+    $("poolAnalyze").disabled=false;
+  }
+}
+function poolWalletStats(){
+  const m=new Map();
+  for(const s of poolRows){
+    const w=s.wallet || "";
+    if(!validTraderAddress(w))continue;
+    const k=low(w);
+    if(!m.has(k))m.set(k,{wallet:w,buys:0,sells:0,buyCount:0,sellCount:0,usdcBuy:0,usdcSell:0,swaps:0});
+    const v=m.get(k);
+    v.swaps++;
+    if(s.type==="BUY"){v.buys+=Number(s.btnAmount||0);v.usdcBuy+=Number(s.usdcAmount||0);v.buyCount++}
+    else if(s.type==="SELL"){v.sells+=Number(s.btnAmount||0);v.usdcSell+=Number(s.usdcAmount||0);v.sellCount++}
+  }
+  return [...m.values()];
+}
+function renderPool(indexedBlock,indexingErrors){
+  const buys=poolRows.filter(s=>s.type==="BUY"), sells=poolRows.filter(s=>s.type==="SELL");
+  const sum=(a,k)=>a.reduce((t,s)=>t+Number(s[k]||0),0);
+  const wallets=poolWalletStats();
+  $("pMoves").textContent=poolRows.length.toLocaleString();
+  $("pBuyCount").textContent=buys.length.toLocaleString();
+  $("pSellCount").textContent=sells.length.toLocaleString();
+  $("pBought").textContent=poolNum(sum(buys,"btnAmount"));
+  $("pSold").textContent=poolNum(sum(sells,"btnAmount"));
+  $("pWallets").textContent=wallets.length.toLocaleString();
+  $("pBuyUsd").textContent=poolNum(sum(buys,"usdcAmount"));
+  $("pSellUsd").textContent=poolNum(sum(sells,"usdcAmount"));
+  $("pNet").textContent=poolNum(sum(buys,"btnAmount")-sum(sells,"btnAmount"));
+  $("pBlock").textContent=indexedBlock==null?"—":Number(indexedBlock).toLocaleString();
+  const rank=(arr,id,kind)=>$(id).innerHTML=arr.sort((a,b)=>kind==="BUY"?b.buys-a.buys:b.sells-a.sells).slice(0,20).map((w,i)=>{
+    const total=kind==="BUY"?w.buys:w.sells;
+    const count=kind==="BUY"?w.buyCount:w.sellCount;
+    return `<tr><td>${i+1}</td><td><a class="wallet-link" target="_blank" rel="noopener" href="https://basescan.org/address/${w.wallet}">${escHtml(poolShort(w.wallet))}</a></td><td class="r">${poolNum(total)}</td><td class="r">${count}</td><td><button class="wallet-action" data-analyze-wallet="${w.wallet}">Analyze</button></td></tr>`;
+  }).join("");
+  rank(wallets.filter(w=>w.buyCount>0),"poolTopBuyers","BUY");
+  rank(wallets.filter(w=>w.sellCount>0),"poolTopSellers","SELL");
+  applyPoolFilter();
+}
+function applyPoolFilter(){
+  const q=low($("poolWalletSearch").value.trim());
+  poolFiltered=poolRows.filter(s=>(poolFilter==="ALL"||s.type===poolFilter)&&(!q||low(s.wallet).includes(q)));
+  poolPage=1;drawPool();
+}
+function drawPool(){
+  const pages=Math.max(1,Math.ceil(poolFiltered.length/poolPageSize));
+  const part=poolFiltered.slice((poolPage-1)*poolPageSize,poolPage*poolPageSize);
+  $("poolHistory").innerHTML=part.map(s=>{
+    const w=s.wallet||"";
+    return `<tr>
+      <td>${escHtml(poolDate(s.date))}</td>
+      <td class="${s.type==="BUY"?"buy":"sell"}">${escHtml(s.type||"OTHER")}</td>
+      <td>${validTraderAddress(w)?`<a class="wallet-link" target="_blank" rel="noopener" href="https://basescan.org/address/${w}">${escHtml(poolShort(w))}</a>`:escHtml(poolShort(w))}</td>
+      <td class="r">${poolNum(s.btnAmount)}</td><td class="r">${poolNum(s.usdcAmount)}</td>
+      <td class="r">${poolNum(s.amountUSD)}</td>
+      <td><a target="_blank" rel="noopener" href="https://basescan.org/tx/${encodeURIComponent(s.transaction||"")}">${escHtml(poolShort(s.transaction||""))}</a></td>
+    </tr>`;
+  }).join("");
+  $("poolPageInfo").textContent=`${poolFiltered.length.toLocaleString()} swaps · Page ${poolPage} of ${pages}`;
+  $("poolPrev").disabled=poolPage<=1;$("poolNext").disabled=poolPage>=pages;
+}
+function exportPoolCsv(){
+  const fields=["date","type","wallet","walletSource","btnAmount","usdcAmount","amountUSD","sender","recipient","transaction","block","logIndex"];
+  const lines=[fields.join(",")];
+  for(const s of poolRows)lines.push(fields.map(k=>esc(s[k])).join(","));
+  const blob=new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=`BTN_pool_swaps_${$("poolStart").value}_${$("poolEnd").value}_${poolRows.length}.csv`;a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportPoolPdf(){
+ if(!poolRows.length){alert("Analyze the pool before exporting the PDF report.");return}
+ const wallets=poolWalletStats();
+ const buyers=wallets.filter(w=>w.buyCount>0).sort((a,b)=>b.buys-a.buys).slice(0,20).map((w,i)=>[i+1,w.wallet,poolNum(w.buys),w.buyCount]);
+ const sellers=wallets.filter(w=>w.sellCount>0).sort((a,b)=>b.sells-a.sells).slice(0,20).map((w,i)=>[i+1,w.wallet,poolNum(w.sells),w.sellCount]);
+ const metrics=[
+  ["Date range",`${$("poolStart").value} to ${$("poolEnd").value}`],
+  ["Total swaps",$("pMoves").textContent],["Buy swaps",$("pBuyCount").textContent],
+  ["Sell swaps",$("pSellCount").textContent],["Unique trader wallets",$("pWallets").textContent],
+  ["BTN bought",$("pBought").textContent],["BTN sold",$("pSold").textContent],
+  ["Buy volume (USDC)",$("pBuyUsd").textContent],["Sell volume (USDC)",$("pSellUsd").textContent],
+  ["Net BTN flow",$("pNet").textContent],["Indexed block",$("pBlock").textContent]
+ ];
+ printReport("BTN Pool Analyzer V35 Report",`BTN/USDC Pool · ${$("poolStart").value} to ${$("poolEnd").value} · ${poolRows.length.toLocaleString()} swaps`,metrics,[
+  {title:"Top 20 Buyer Wallets",headers:["#","Wallet","BTN bought","Swaps"],rows:buyers},
+  {title:"Top 20 Seller Wallets",headers:["#","Wallet","BTN sold","Swaps"],rows:sellers}
+ ],"The complete swap-by-swap dataset is available using Export All Swaps to CSV.");
+}
+function openWalletAnalyzer(wallet){
+  if(!/^0x[a-fA-F0-9]{40}$/.test(wallet||""))return;
+  document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab==="wallet"));
+  $("poolPanel").classList.add("hidden");$("walletPanel").classList.remove("hidden");$("crmPanel").classList.add("hidden");
+  $("wallet").value=wallet;
+  analyze(wallet);
+}
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{
+  const tab=b.dataset.tab;
+  document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));
+  $("poolPanel").classList.toggle("hidden",tab!=="pool");
+  $("walletPanel").classList.toggle("hidden",tab!=="wallet");
+  $("crmPanel").classList.toggle("hidden",tab!=="crm");
+  if(tab==="crm") { crmLoadSettings().catch(e=>crmSetStatus("Schedule settings: "+e.message)); crmLoadHistory().catch(()=>{}); }
+}));
+$("poolAnalyze").addEventListener("click",analyzePool);
+$("poolExport").addEventListener("click",exportPoolCsv);
+$("poolPdf").addEventListener("click",exportPoolPdf);
+$("walletPdf").addEventListener("click",exportWalletPdf);
+$("poolWalletSearch").addEventListener("input",applyPoolFilter);
+document.querySelectorAll("[data-pfilter]").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("[data-pfilter]").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");poolFilter=b.dataset.pfilter;applyPoolFilter();
+}));
+$("poolPrev").addEventListener("click",()=>{if(poolPage>1){poolPage--;drawPool()}});
+$("poolNext").addEventListener("click",()=>{if(poolPage<Math.ceil(poolFiltered.length/poolPageSize)){poolPage++;drawPool()}});
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-analyze-wallet]");
+  if(b)openWalletAnalyzer(b.getAttribute("data-analyze-wallet"));
+});
+
+// ---------------- CRM REPORT MODULE (V35) ----------------
+let crmLastReportId = "";
+function crmApiBase(){ return ($("crmApiUrl").value||"").trim().replace(/\/+$/,""); }
+function crmAdminKey(){ return ($("crmAdminKey").value||"").trim(); }
+function crmSetStatus(message){ $("crmStatus").textContent=message; }
+function crmSetScheduleStatus(message){ $("crmScheduleStatus").textContent=message; }
+function crmAuthHeaders(){ return {"Authorization":"Bearer "+crmAdminKey(),"Content-Type":"application/json"}; }
+async function crmRequest(path, options={}){
+ const base=crmApiBase();
+ if(!base)throw Error("Enter the V35 Backend URL first.");
+ if(!crmAdminKey())throw Error("Enter the Administrator API Key.");
+ const response=await fetch(base+path,{cache:"no-store",...options,headers:{...(options.headers||{}),"Authorization":"Bearer "+crmAdminKey()}});
+ const text=await response.text();let data;try{data=JSON.parse(text)}catch{throw Error("V35 backend returned a non-JSON response (HTTP "+response.status+").")}
+ if(!response.ok||!data.ok)throw Error(data.error||("HTTP "+response.status));
+ return data;
+}
+function crmDateDefaults(){
+ const end=new Date();const start=new Date(end.getTime()-7*86400000);
+ const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+ $("crmStart").value=iso(start);$("crmEnd").value=iso(end);
+}
+async function crmDownload(id){
+ const base=crmApiBase();if(!base||!crmAdminKey())throw Error("Enter the backend URL and admin key first.");
+ const r=await fetch(base+"/crm-report-file?id="+encodeURIComponent(id),{headers:{"Authorization":"Bearer "+crmAdminKey()},cache:"no-store"});
+ if(!r.ok){let msg="PDF download failed (HTTP "+r.status+")";try{msg=(await r.json()).error||msg}catch{}throw Error(msg)}
+ const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="BTN_Price_Influence_Report_"+id+".pdf";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+async function crmGenerate(sendTelegram){
+ const start=$("crmStart").value,end=$("crmEnd").value;
+ if(!start||!end||start>end){crmSetStatus("Select a valid date range.");return}
+ $("crmGenerate").disabled=true;$("crmGenerateSend").disabled=true;$("crmDownload").disabled=true;
+ crmSetStatus("Generating report. Loading all pool swaps, matching CRM wallets and creating the PDF. This can take a few minutes for large date ranges…");
+ try{
+  const data=await crmRequest("/crm-report",{method:"POST",headers:crmAuthHeaders(),body:JSON.stringify({start_date:start,end_date:end,send_telegram:sendTelegram})});
+  crmLastReportId=data.report_id;$("crmDownload").disabled=false;
+  const x=data.summary||{};$("crmSwaps").textContent=Number(x.swap_count||0).toLocaleString();$("crmWallets").textContent=Number(x.wallet_count||0).toLocaleString();$("crmMatched").textContent=Number(x.crm_wallets_matched||0).toLocaleString();$("crmUnmatched").textContent=Number(x.crm_wallets_unmatched||0).toLocaleString();$("crmSummary").classList.remove("hidden");
+  crmSetStatus("Report generated successfully.\nPeriod: "+start+" to "+end+"\nSwaps: "+Number(x.swap_count||0).toLocaleString()+"\nCRM matched: "+Number(x.crm_wallets_matched||0).toLocaleString()+"\nNot in CRM: "+Number(x.crm_wallets_unmatched||0).toLocaleString()+"\nTelegram: "+(data.telegram_sent?"Sent to the private group":(data.telegram_error?"Not sent — "+data.telegram_error:"Not sent"))+"\nDownloading PDF…");
+  await crmDownload(data.report_id);await crmLoadHistory();
+ }catch(e){crmSetStatus("Report error: "+e.message)}
+ finally{$("crmGenerate").disabled=false;$("crmGenerateSend").disabled=false}
+}
+async function crmLoadSettings(){
+ try{
+  const d=await crmRequest("/crm-config");const s=d.settings||{};
+  $("crmWeeklyEnabled").checked=!!s.weekly_enabled;$("crmWeeklyDay").value=s.weekly_day||"Friday";
+  $("crmMonthlyEnabled").checked=!!s.monthly_enabled;$("crmMonthlyDay").value=String(s.monthly_day||"1");
+  $("crmSendTime").value=s.send_time||"09:00";$("crmTimezone").value=s.timezone||"America/Caracas";
+  crmSetScheduleStatus("Schedule settings loaded. Weekly: "+(s.weekly_enabled?"ON":"OFF")+" · Monthly: "+(s.monthly_enabled?"ON":"OFF")+" · "+(s.send_time||"09:00")+" "+(s.timezone||"America/Caracas"));
+ }catch(e){crmSetScheduleStatus("Could not load schedule: "+e.message);throw e}
+}
+async function crmSaveSettings(){
+ try{
+  const body={weekly_enabled:$("crmWeeklyEnabled").checked,weekly_day:$("crmWeeklyDay").value,
+   monthly_enabled:$("crmMonthlyEnabled").checked,monthly_day:$("crmMonthlyDay").value,
+   send_time:$("crmSendTime").value,timezone:$("crmTimezone").value};
+  const d=await crmRequest("/crm-config",{method:"POST",headers:crmAuthHeaders(),body:JSON.stringify(body)});
+  crmSetScheduleStatus("Schedule saved successfully. Weekly: "+(d.settings.weekly_enabled?"ON":"OFF")+" · Monthly: "+(d.settings.monthly_enabled?"ON":"OFF")+".");
+ }catch(e){crmSetScheduleStatus("Save failed: "+e.message)}
+}
+async function crmLoadHistory(){
+ try{
+  const d=await crmRequest("/crm-history?limit=20");const rows=d.history||[];
+  $("crmHistoryRows").innerHTML=rows.length?rows.map(x=>`<tr><td>${escHtml(x.created_at||"")}</td><td>${escHtml(x.type||"")}</td><td>${escHtml((x.start_date||"")+" → "+(x.end_date||""))}</td><td class="r">${Number(x.swap_count||0).toLocaleString()}</td><td class="${x.telegram_sent?"ok":"muted"}">${x.telegram_sent?"Sent":"Not sent"}</td><td>${x.id&&/^\d{8}_\d{6}_\d+$/.test(x.id)?`<button data-crm-download="${escHtml(x.id)}">Download PDF</button>`:escHtml(x.error||"Unavailable")}</td></tr>`).join(""):`<tr><td colspan="6" class="muted">No reports generated yet.</td></tr>`;
+ }catch(e){$("crmHistoryRows").innerHTML=`<tr><td colspan="6" class="muted">Could not load history: ${escHtml(e.message)}</td></tr>`}
+}
+$("crmGenerate").addEventListener("click",()=>crmGenerate(false));
+$("crmGenerateSend").addEventListener("click",()=>crmGenerate(true));
+$("crmDownload").addEventListener("click",()=>{if(crmLastReportId)crmDownload(crmLastReportId).catch(e=>crmSetStatus(e.message))});
+$("crmLoadSettings").addEventListener("click",()=>crmLoadSettings().catch(()=>{}));
+$("crmSaveSettings").addEventListener("click",crmSaveSettings);
+$("crmLoadHistory").addEventListener("click",crmLoadHistory);
+document.addEventListener("click",e=>{const b=e.target.closest("[data-crm-download]");if(b)crmDownload(b.getAttribute("data-crm-download")).catch(err=>crmSetStatus(err.message))});
+crmDateDefaults();
+// ---------------- END CRM REPORT MODULE ----------------
+
+initPoolDates();
+// ---------------- END POOL ANALYZER ----------------
+
+async function boot(){
+ try{
+  await J("/health");
+  $("badge").textContent="BaseScan direct mode ready";
+  $("badge").className="pill ok";
+  $("status").textContent="Ready. No API key, Blockscout, or full-chain RPC scan.";
+ }catch(e){
+  $("badge").textContent="Local server unavailable";$("badge").className="pill bad";$("analyze").disabled=true;
+ }
+}
+$("form").onsubmit=e=>{e.preventDefault();const w=$("wallet").value.trim();if(/^0x[a-fA-F0-9]{40}$/.test(w))analyze(w);else $("status").textContent="Invalid wallet"};
+document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));b.classList.add("active");filter=b.dataset.filter;apply()});
+$("prev").onclick=()=>{if(uiPage>1){uiPage--;draw()}};
+$("next").onclick=()=>{if(uiPage<Math.ceil(filtered.length/uiPageSize)){uiPage++;draw()}};
+$("export").onclick=csv;
+boot();
+})();
+</script>
+</body></html>
