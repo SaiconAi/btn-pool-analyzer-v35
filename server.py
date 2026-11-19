@@ -328,6 +328,68 @@ def build_report_data(start_date, end_date):
         group["wallets"] += 1
         for field in ("buy_btn", "sell_btn", "buy_usdc", "sell_usdc", "buy_swaps", "sell_swaps"):
             group[field] += item[field]
+    def build_side_classification(btn_field, usdc_field, swaps_field):
+        canonical = {"domestic": "Domestic", "internal": "Internal", "external": "External",
+                     "market maker": "Market maker", "marketmaker": "Market maker"}
+        type_totals, group_totals = {}, {}
+        for wallet_item in enriched:
+            raw_type = str(wallet_item.get("type") or "").strip()
+            category = canonical.get(raw_type.casefold(), raw_type or "Unclassified (CRM)")
+            if not wallet_item.get("in_crm") and category.casefold() not in canonical:
+                category = "External"
+            tr = type_totals.setdefault(category, {"classification": category, "btn": 0.0, "usdc": 0.0,
+                                                    "swaps": 0, "_wallets": set()})
+            tr["_wallets"].add(wallet_item["wallet"])
+            tr["btn"] += float(wallet_item.get(btn_field, 0) or 0)
+            tr["usdc"] += float(wallet_item.get(usdc_field, 0) or 0)
+            tr["swaps"] += int(wallet_item.get(swaps_field, 0) or 0)
+            group_name = str(wallet_item.get("group") or "Unassigned group")
+            gr = group_totals.setdefault((category, group_name), {
+                "classification": category, "group": group_name, "btn": 0.0, "usdc": 0.0,
+                "swaps": 0, "_wallets": set()})
+            gr["_wallets"].add(wallet_item["wallet"])
+            gr["btn"] += float(wallet_item.get(btn_field, 0) or 0)
+            gr["usdc"] += float(wallet_item.get(usdc_field, 0) or 0)
+            gr["swaps"] += int(wallet_item.get(swaps_field, 0) or 0)
+        for required_category in ("Domestic", "Internal", "External", "Market maker"):
+            type_totals.setdefault(required_category, {
+                "classification": required_category, "btn": 0.0, "usdc": 0.0,
+                "swaps": 0, "_wallets": set()
+            })
+        total_usdc = sum(x["usdc"] for x in type_totals.values())
+        for row in type_totals.values():
+            row["wallets"] = len(row.pop("_wallets"))
+            row["share"] = row["usdc"] / total_usdc * 100 if total_usdc else 0.0
+            row["avg_price"] = row["usdc"] / row["btn"] if row["btn"] else 0.0
+        for row in group_totals.values():
+            row["wallets"] = len(row.pop("_wallets"))
+            row["share"] = row["usdc"] / total_usdc * 100 if total_usdc else 0.0
+            row["avg_price"] = row["usdc"] / row["btn"] if row["btn"] else 0.0
+        order = ["Domestic", "Internal", "External", "Market maker"]
+        totals = sorted(type_totals.values(), key=lambda x: (order.index(x["classification"]) if x["classification"] in order else 99, -x["usdc"]))
+        groups_detail = sorted(group_totals.values(), key=lambda x: (-x["usdc"], x["classification"], x["group"]))
+        chart_groups = {}
+        for wallet_item in enriched:
+            group_name = str(wallet_item.get("group") or "Unassigned group")
+            row = chart_groups.setdefault(group_name, {
+                "group": group_name, "btn": 0.0, "usdc": 0.0, "swaps": 0, "_wallets": set()
+            })
+            row["_wallets"].add(wallet_item["wallet"])
+            row["btn"] += float(wallet_item.get(btn_field, 0) or 0)
+            row["usdc"] += float(wallet_item.get(usdc_field, 0) or 0)
+            row["swaps"] += int(wallet_item.get(swaps_field, 0) or 0)
+        chart_group_rows = []
+        for row in chart_groups.values():
+            row["wallets"] = len(row.pop("_wallets"))
+            row["share"] = row["usdc"] / total_usdc * 100 if total_usdc else 0.0
+            chart_group_rows.append(row)
+        chart_group_rows.sort(key=lambda x: -x["usdc"])
+        return {"totals": totals, "groups": chart_group_rows, "group_details": groups_detail,
+                "total_usdc": total_usdc}
+
+    buy_classification = build_side_classification("buy_btn", "buy_usdc", "buy_swaps")
+    sell_classification = build_side_classification("sell_btn", "sell_usdc", "sell_swaps")
+
     total_sell_usdc = sum(x["sell_usdc"] for x in enriched)
     total_buy_usdc = sum(x["buy_usdc"] for x in enriched)
     group_rows = sorted(groups.values(), key=lambda x: x["sell_usdc"], reverse=True)
@@ -351,6 +413,7 @@ def build_report_data(start_date, end_date):
         "crm_rows": crm_rows, "crm_wallets_matched": sum(1 for x in enriched if x["in_crm"]),
         "crm_wallets_unmatched": len(unknown),
         "buyers": buyers, "sellers": sellers, "groups": group_rows,
+        "buy_classification": buy_classification, "sell_classification": sell_classification,
         "unknown_wallets": sorted(unknown, key=lambda x: x["buy_usdc"] + x["sell_usdc"], reverse=True)[:100],
     }
     return result
@@ -386,7 +449,7 @@ STRICT RULES:
 - The supplied V35 report dataset contains pool swaps and CRM matches, but does not necessarily contain wallet funding transfers. If funding-transfer evidence is absent, explicitly say common funding sources cannot be established from this dataset.
 - Do not equate top-20 wallet activity with total market activity. Clearly state the scope.
 
-Write in a professional, objective and evidence-based style. Use concise section headings: Executive Summary, Buying and Selling Pressure, Wallet and CRM Analysis, Patterns and Anomalies, Funding Sources, Conclusions and Recommended Follow-up, Data Limitations. Write the report in English.\n- Use Markdown headings (##), short paragraphs, and bullet lists where useful.\n- When a compact comparison materially improves readability, use a valid Markdown table: include a header row, a separator row such as |---|---|, and consistent column counts.\n- Keep AI-generated tables to a maximum of 6 columns; do not place long wallet addresses in Markdown tables.\n- Never output a table as plain text without the Markdown header separator. Do not wrap the report in code fences."""
+Write in a professional, objective and evidence-based style. The PDF includes separate BUY and SELL donut charts, four CRM classifications, and group-level buy/sell pressure; do not request a Net BTN Activity chart. Use concise section headings: Executive Summary, Buying and Selling Pressure, Wallet and CRM Analysis, Patterns and Anomalies, Funding Sources, Conclusions and Recommended Follow-up, Data Limitations. Write the report in English.\n- Use Markdown headings (##), short paragraphs, and bullet lists where useful.\n- When a compact comparison materially improves readability, use a valid Markdown table: include a header row, a separator row such as |---|---|, and consistent column counts.\n- Keep AI-generated tables to a maximum of 6 columns; do not place long wallet addresses in Markdown tables.\n- Never output a table as plain text without the Markdown header separator. Do not wrap the report in code fences."""
 
 
 def generate_ai_analysis(report):
@@ -520,6 +583,103 @@ class GroupPressureChart(Flowable):
         c.setFillColor(colors.HexColor("#E66A3C")); c.rect(left+82,5,7,6,fill=1,stroke=0); c.setFillColor(colors.HexColor("#334155")); c.drawString(left+93,5,"Sell volume")
 
 
+class PressureDonutChart(Flowable):
+    """BUY/SELL donut: outer ring = CRM groups; inner ring = CRM Type classifications."""
+    TYPE_COLORS = {"Domestic": "#263F66", "External": "#B9C4D2", "Internal": "#20A486",
+                   "Market maker": "#E6A000", "Unclassified (CRM)": "#8B7BB8"}
+    GROUP_PALETTE = ("#2878C8", "#E66A3C", "#20A486", "#E6A000", "#D96C9D",
+                     "#7866B2", "#5C9EAD", "#9A7B58", "#75869A", "#B65C5C")
+
+    def __init__(self, side, classification, width=760, height=205):
+        Flowable.__init__(self)
+        self.side = side.upper()
+        self.data = classification or {"totals": [], "groups": [], "total_usdc": 0}
+        self.width, self.height = width, height
+
+    def draw(self):
+        from reportlab.lib import colors
+        c = self.canv
+        cx, cy = 100, self.height / 2 - 2
+        outer_r, inner_r, hole_r = 72, 49, 30
+        group_rows = sorted(self.data.get("groups", []), key=lambda x: float(x.get("usdc", 0) or 0), reverse=True)
+        type_rows = self.data.get("totals", [])
+        total = float(self.data.get("total_usdc", 0) or 0)
+
+        if total > 0 and group_rows:
+            angle = 90
+            for i, row in enumerate(group_rows):
+                value = max(0.0, float(row.get("usdc", 0) or 0))
+                extent = 360 * value / total
+                if extent <= 0:
+                    continue
+                c.setFillColor(colors.HexColor(self.GROUP_PALETTE[i % len(self.GROUP_PALETTE)]))
+                c.wedge(cx-outer_r, cy-outer_r, cx+outer_r, cy+outer_r, angle, extent, fill=1, stroke=0)
+                angle += extent
+        else:
+            c.setFillColor(colors.HexColor("#D9DEE7"))
+            c.circle(cx, cy, outer_r, fill=1, stroke=0)
+
+        inner_total = sum(max(0.0, float(row.get("usdc", 0) or 0)) for row in type_rows)
+        if inner_total > 0:
+            angle = 90
+            for row in type_rows:
+                category = str(row.get("classification") or "Unclassified (CRM)")
+                value = max(0.0, float(row.get("usdc", 0) or 0))
+                extent = 360 * value / inner_total
+                if extent <= 0:
+                    continue
+                c.setFillColor(colors.HexColor(self.TYPE_COLORS.get(category, "#8B7BB8")))
+                c.wedge(cx-inner_r, cy-inner_r, cx+inner_r, cy+inner_r, angle, extent, fill=1, stroke=0)
+                angle += extent
+
+        c.setFillColor(colors.white)
+        c.circle(cx, cy, hole_r, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#243F66"))
+        c.setFont("Helvetica-Bold", 15)
+        c.drawCentredString(cx, cy+2, self.side)
+        c.setFont("Helvetica", 6.5)
+        c.setFillColor(colors.HexColor("#64748B"))
+        c.drawCentredString(cx, cy-10, "USDC volume")
+
+        legend_x = 205
+        c.setFillColor(colors.HexColor("#243F66"))
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(legend_x, self.height-12, f"{self.side.title()} pressure by CRM group")
+        c.setFont("Helvetica", 7)
+        c.setFillColor(colors.HexColor("#64748B"))
+        c.drawString(legend_x, self.height-25, "Outer ring: groups · Inner ring: Domestic, Internal, External and Market maker")
+        y = self.height - 43
+        for i, row in enumerate(group_rows[:8]):
+            value = max(0.0, float(row.get("usdc", 0) or 0))
+            share = value / total * 100 if total else 0
+            c.setFillColor(colors.HexColor(self.GROUP_PALETTE[i % len(self.GROUP_PALETTE)]))
+            c.rect(legend_x, y-2, 7, 7, fill=1, stroke=0)
+            label = str(row.get("group", ""))
+            if len(label) > 58:
+                label = label[:55] + "..."
+            c.setFillColor(colors.HexColor("#263548"))
+            c.setFont("Helvetica", 7)
+            c.drawString(legend_x+12, y, label)
+            c.setFillColor(colors.HexColor("#475569"))
+            c.setFont("Helvetica-Bold", 7)
+            c.drawRightString(self.width-8, y, f"{share:.1f}%  |  {value:,.2f} USDC")
+            y -= 13
+        if len(group_rows) > 8:
+            c.setFillColor(colors.HexColor("#64748B"))
+            c.setFont("Helvetica-Oblique", 6.5)
+            c.drawString(legend_x, y, f"+ {len(group_rows)-8} additional group rows included in the chart")
+
+        x = 12
+        for row in type_rows:
+            category = str(row.get("classification") or "Unclassified (CRM)")
+            c.setFillColor(colors.HexColor(self.TYPE_COLORS.get(category, "#8B7BB8")))
+            c.rect(x, 7, 6, 6, fill=1, stroke=0)
+            c.setFillColor(colors.HexColor("#334155"))
+            c.setFont("Helvetica", 6)
+            c.drawString(x+9, 7, f"{category} {float(row.get('share', 0) or 0):.1f}%")
+            x += 90
+
+
 class NetFlowChart(Flowable):
     def __init__(self, groups, width=520, height=205):
         Flowable.__init__(self); self.groups=(groups or [])[:10]; self.width=width; self.height=height
@@ -548,7 +708,7 @@ def generate_pdf(report, report_id):
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
     except Exception as e:
         raise RuntimeError("PDF engine is not installed: " + str(e))
     path = REPORTS_DIR / f"{report_id}.pdf"
@@ -560,6 +720,10 @@ def generate_pdf(report, report_id):
                               spaceAfter=0, wordWrap="CJK"))
     styles.add(ParagraphStyle(name="AITableHeader", parent=styles["BodyText"], fontName="Helvetica-Bold",
                               fontSize=7.2, leading=9, textColor=colors.white, spaceAfter=0, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="WalletCell", parent=styles["BodyText"], fontName="Courier",
+                              fontSize=5.5, leading=6, spaceAfter=0, wordWrap="LTR"))
+    styles.add(ParagraphStyle(name="ClassificationCell", parent=styles["BodyText"], fontSize=6.5,
+                              leading=7.5, spaceAfter=0, wordWrap="CJK"))
     story = [Paragraph("BTN Price Influence Report", styles["Title"]),
              Paragraph(f"BTN/USDC Pool · {report['start_date']} to {report['end_date']}", styles["Heading2"]),
              Spacer(1, 5*mm)]
@@ -679,37 +843,96 @@ def generate_pdf(report, report_id):
             i += 1
         story.append(Spacer(1, 5*mm))
 
-    story.append(Paragraph("Pool Activity Visual Analysis", styles["Heading1"]))
-    story.append(Paragraph("Double-ring distribution, group-level buy/sell pressure and net BTN activity.", styles["Italic"]))
-    story.append(DoubleRingChart(report.get("groups", [])))
-    story.append(Spacer(1, 3*mm))
-    story.append(GroupPressureChart(report.get("groups", [])))
-    story.append(Spacer(1, 3*mm))
-    story.append(NetFlowChart(report.get("groups", [])))
     story.append(PageBreak())
+    story.append(Paragraph("BUY Pressure Distribution", styles["Heading1"]))
+    story.append(Paragraph("USDC spent by buyer wallets. Outer ring: CRM groups. Inner ring: the four CRM classifications.", styles["Italic"]))
+    story.append(PressureDonutChart("BUY", report.get("buy_classification", {}), width=doc.width, height=205))
+    story.append(Spacer(1, 2*mm))
+
+    def add_classification_table(title, classification):
+        story.append(Paragraph(title, styles["Heading2"]))
+        headers = ["Classification", "CRM group", "Wallets", "BTN", "USDC", "Swaps", "Avg. price", "Share"]
+        rows = []
+        group_lookup = {}
+        for group_row in classification.get("group_details", []):
+            group_lookup.setdefault(group_row["classification"], []).append(group_row)
+        for total_row in classification.get("totals", []):
+            rows.append([total_row["classification"], "CLASSIFICATION TOTAL", total_row["wallets"],
+                         money(total_row["btn"], 4), money(total_row["usdc"]), total_row["swaps"],
+                         money(total_row["avg_price"], 4), f"{total_row['share']:.1f}%"])
+            for group_row in group_lookup.get(total_row["classification"], []):
+                rows.append(["", "  " + group_row["group"], group_row["wallets"],
+                             money(group_row["btn"], 4), money(group_row["usdc"]), group_row["swaps"],
+                             money(group_row["avg_price"], 4), f"{group_row['share']:.1f}%"])
+        data = [[Paragraph(xml_escape(str(h)), styles["AITableHeader"]) for h in headers]]
+        for row in rows:
+            data.append([Paragraph(xml_escape(str(v)), styles["ClassificationCell"]) for v in row])
+        widths = [29*mm, 77*mm, 17*mm, 24*mm, 24*mm, 15*mm, 24*mm, 20*mm]
+        tbl = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
+        commands = [("BACKGROUND", (0,0), (-1,0), colors.HexColor("#243F66")),
+                    ("GRID", (0,0), (-1,-1), .35, colors.HexColor("#C8D0DC")),
+                    ("VALIGN", (0,0), (-1,-1), "TOP"),
+                    ("LEFTPADDING", (0,0), (-1,-1), 4),
+                    ("RIGHTPADDING", (0,0), (-1,-1), 4),
+                    ("TOPPADDING", (0,0), (-1,-1), 3),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 3)]
+        for idx, row in enumerate(rows, start=1):
+            if row[1] == "CLASSIFICATION TOTAL":
+                commands.append(("BACKGROUND", (0,idx), (-1,idx), colors.HexColor("#E8EDF4")))
+                commands.append(("FONTNAME", (0,idx), (-1,idx), "Helvetica-Bold"))
+        tbl.setStyle(TableStyle(commands))
+        story.append(tbl)
+        story.append(Spacer(1, 3*mm))
+
+    add_classification_table("BUY Classification", report.get("buy_classification", {}))
+    story.append(PageBreak())
+    story.append(Paragraph("SELL Pressure Distribution", styles["Heading1"]))
+    story.append(Paragraph("USDC received by seller wallets. Outer ring: CRM groups. Inner ring: the four CRM classifications.", styles["Italic"]))
+    story.append(PressureDonutChart("SELL", report.get("sell_classification", {}), width=doc.width, height=205))
+    story.append(Spacer(1, 2*mm))
+    add_classification_table("SELL Classification", report.get("sell_classification", {}))
+    story.append(Spacer(1, 3*mm))
+    story.append(KeepTogether([
+        Paragraph("Buy-side vs Sell-side Pressure by Group", styles["Heading2"]),
+        GroupPressureChart(report.get("groups", []), width=doc.width, height=205)
+    ]))
+    story.append(Spacer(1, 3*mm))
 
     def add_table(title, headers, rows, widths=None):
         story.append(Paragraph(title, styles["Heading2"]))
-        data = [[Paragraph(str(h), styles["SmallCell"]) for h in headers]]
+        wallet_index = next((i for i, h in enumerate(headers) if str(h).strip().lower() == "wallet"), -1)
+        data = [[Paragraph(xml_escape(str(h)), styles["SmallCell"]) for h in headers]]
         for row in rows:
-            data.append([Paragraph(str(v if v is not None else ""), styles["SmallCell"]) for v in row])
-        tbl = Table(data, repeatRows=1, colWidths=widths)
-        tbl.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#e8edf4")),
+            cells = []
+            for col_index, value in enumerate(row):
+                value_text = str(value if value is not None else "")
+                if col_index == wallet_index:
+                    value_text = re.sub(r"\s+", "", value_text)
+                    cells.append(Paragraph(xml_escape(value_text), styles["WalletCell"]))
+                else:
+                    cells.append(Paragraph(xml_escape(value_text), styles["SmallCell"]))
+            data.append(cells)
+        tbl = Table(data, repeatRows=1, colWidths=widths, hAlign="LEFT")
+        tbl.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.HexColor("#243F66")),
+                                 ("TEXTCOLOR", (0,0), (-1,0), colors.white),
                                  ("GRID", (0,0), (-1,-1), .35, colors.HexColor("#c8d0dc")),
                                  ("VALIGN", (0,0), (-1,-1), "TOP"),
-                                 ("FONTSIZE", (0,0), (-1,-1), 7),
-                                 ("PADDING", (0,0), (-1,-1), 4)]))
+                                 ("LEFTPADDING", (0,0), (-1,-1), 3),
+                                 ("RIGHTPADDING", (0,0), (-1,-1), 3),
+                                 ("TOPPADDING", (0,0), (-1,-1), 3),
+                                 ("BOTTOMPADDING", (0,0), (-1,-1), 3)]))
         story.append(tbl)
         story.append(Spacer(1, 4*mm))
 
     buyer_rows = [[x["rank"], x["wallet"], money(x["buy_btn"], 4), money(x["buy_usdc"]), x["buy_swaps"],
-                   x["type"], x["group"], x["account"], x["leader"]] for x in report["buyers"]]
+                   x["type"], x["group"], x["account"]] for x in report["buyers"]]
     seller_rows = [[x["rank"], x["wallet"], money(x["sell_btn"], 4), money(x["sell_usdc"]), x["sell_swaps"],
-                    x["type"], x["group"], x["account"], x["leader"]] for x in report["sellers"]]
-    add_table("Top 20 Buyer Wallets", ["#", "Wallet", "BTN bought", "USDC spent", "Swaps", "Type", "Group", "Account", "Leader"], buyer_rows,
-              [9*mm, 40*mm, 20*mm, 20*mm, 12*mm, 18*mm, 48*mm, 22*mm, 30*mm])
-    add_table("Top 20 Seller Wallets", ["#", "Wallet", "BTN sold", "USDC received", "Swaps", "Type", "Group", "Account", "Leader"], seller_rows,
-              [9*mm, 40*mm, 20*mm, 22*mm, 12*mm, 18*mm, 48*mm, 22*mm, 30*mm])
+                    x["type"], x["group"], x["account"]] for x in report["sellers"]]
+    add_table("Top 20 Buyer Wallets", ["#", "Wallet", "BTN bought", "USDC spent", "Swaps", "Type", "Group", "Account"], buyer_rows,
+              [8*mm, 58*mm, 22*mm, 22*mm, 13*mm, 19*mm, 66*mm, 25*mm])
+    add_table("Top 20 Seller Wallets", ["#", "Wallet", "BTN sold", "USDC received", "Swaps", "Type", "Group", "Account"], seller_rows,
+              [8*mm, 58*mm, 22*mm, 24*mm, 13*mm, 19*mm, 66*mm, 25*mm])
+    story.append(PageBreak())
     group_rows = [[x["group"], x["type"], x["wallets"], money(x["buy_btn"], 4), money(x["sell_btn"], 4),
                    money(x["buy_usdc"]), money(x["sell_usdc"]), f"{x['sell_share']:.2f}%"] for x in report["groups"]]
     add_table("Buying and Selling Pressure by CRM Group", ["Group", "Type", "Wallets", "BTN bought", "BTN sold", "USDC spent", "USDC received", "Sell share"], group_rows,
@@ -719,7 +942,17 @@ def generate_pdf(report, report_id):
     if unknown_rows:
         add_table("Wallets Not Found in CRM (top 100 by activity)", ["Wallet", "BTN bought", "BTN sold", "USDC spent", "USDC received"], unknown_rows,
                   [65*mm, 25*mm, 25*mm, 25*mm, 30*mm])
-    note = "CRM source: CRM Wallets tab, read-only. External means the wallet was not found in the CRM."
+    story.append(Paragraph("Wallet Classification Definitions", styles["Heading2"]))
+    definitions = [
+        ("Domestic", "Wallet with an app account, or without an app account but directly sent or received BTN with a registered account."),
+        ("Internal", "Company wallet used for operational activities."),
+        ("External", "Wallet with no app account and no relationship to any registered account."),
+        ("Market maker", "Wallet used for token listing activities."),
+    ]
+    for label, description in definitions:
+        story.append(Paragraph(f"<b>{xml_escape(label)}:</b> {xml_escape(description)}", styles["SmallCell"]))
+    story.append(Spacer(1, 2*mm))
+    note = "CRM source: CRM Wallets tab, read-only. Classifications are taken from the CRM Type field; wallets absent from the CRM are classified as External unless the CRM explicitly provides another classification."
     if report.get("indexing_errors"):
         note += " WARNING: The Graph subgraph reported indexing errors for this query."
     story.append(Paragraph(note, styles["Italic"]))
