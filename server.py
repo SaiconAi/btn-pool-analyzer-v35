@@ -424,32 +424,31 @@ def money(value, digits=2):
 
 
 
-AI_ANALYST_INSTRUCTIONS = """You are a professional blockchain analytics analyst specializing in cryptocurrency trading behavior, wallet activity, liquidity flows, and transaction pattern detection.
+AI_ANALYST_INSTRUCTIONS = """You are a professional blockchain analytics analyst specializing in cryptocurrency trading behavior, wallet activity, liquidity flows, and transaction analysis.
 
 Analyze the structured data provided by BTN Pool & Wallet Analyzer V35.
 
 Your responsibilities:
 1. Write an executive summary of the analyzed period.
-2. Identify significant buying and selling activity.
+2. Evaluate buying and selling pressure and net BTN flow.
 3. Analyze the behavior of the top 20 buyer and seller wallets.
 4. Identify relevant groups, teams, and leaders using the CRM data.
-5. Detect potential coordinated trading patterns.
-6. Highlight unusual wallet activity and potential anomalies.
-7. Identify possible common funding sources only when supported by transaction-level funding evidence.
-8. Evaluate buying and selling pressure and net BTN flow.
-9. Provide clear conclusions and recommendations for further investigation.
+5. Provide clear conclusions based strictly on the supplied figures.
 
 STRICT RULES:
 - Never invent numbers, transactions, wallet relationships, or conclusions.
 - Use only the data provided.
 - Distinguish verified facts from analytical hypotheses.
-- Do not claim that wallets are controlled by the same person without sufficient evidence.
-- Explicitly indicate when evidence is insufficient.
+- Do not claim that wallets are controlled by the same person.
 - Support important observations with actual figures from the report.
-- The supplied V35 report dataset contains pool swaps and CRM matches, but does not necessarily contain wallet funding transfers. If funding-transfer evidence is absent, explicitly say common funding sources cannot be established from this dataset.
 - Do not equate top-20 wallet activity with total market activity. Clearly state the scope.
+- Do not include sections about patterns and anomalies, funding sources, or data limitations.
 
-Write in a professional, objective and evidence-based style. The PDF includes separate BUY and SELL donut charts, four CRM classifications, and group-level buy/sell pressure; do not request a Net BTN Activity chart. Use concise section headings: Executive Summary, Buying and Selling Pressure, Wallet and CRM Analysis, Patterns and Anomalies, Funding Sources, Conclusions and Recommended Follow-up, Data Limitations. Write the report in English.\n- Use Markdown headings (##), short paragraphs, and bullet lists where useful.\n- When a compact comparison materially improves readability, use a valid Markdown table: include a header row, a separator row such as |---|---|, and consistent column counts.\n- Keep AI-generated tables to a maximum of 6 columns; do not place long wallet addresses in Markdown tables.\n- Never output a table as plain text without the Markdown header separator. Do not wrap the report in code fences."""
+Write in a professional, objective and evidence-based style. The PDF includes separate BUY and SELL donut charts, four CRM classifications, and group-level buy/sell pressure; do not request a Net BTN Activity chart. Use only these section headings: Executive Summary, Buying and Selling Pressure, Wallet and CRM Analysis, Conclusions and Recommended Follow-up. Write the report in English.
+- Use Markdown headings (##), short paragraphs, and bullet lists where useful.
+- When a compact comparison materially improves readability, use a valid Markdown table: include a header row, a separator row such as |---|---|, and consistent column counts.
+- Keep AI-generated tables to a maximum of 6 columns; do not place long wallet addresses in Markdown tables.
+- Never output a table as plain text without the Markdown header separator. Do not wrap the report in code fences."""
 
 
 def generate_ai_analysis(report):
@@ -563,24 +562,62 @@ class DoubleRingChart(Flowable):
 
 class GroupPressureChart(Flowable):
     def __init__(self, groups, width=520, height=205):
-        Flowable.__init__(self); self.groups = (groups or [])[:8]; self.width=width; self.height=height
+        Flowable.__init__(self)
+        self.groups = (groups or [])[:8]
+        self.width = width
+        self.height = height
 
     def draw(self):
         from reportlab.lib import colors
-        c=self.canv; rows=self.groups; left=145; right=self.width-12; top=self.height-18
-        c.setFillColor(colors.HexColor("#243F66")); c.setFont("Helvetica-Bold", 9); c.drawString(4, self.height-10, "Buy-side vs sell-side pressure by group (USDC)")
-        maximum=max([max(float(g.get("buy_usdc",0) or 0),float(g.get("sell_usdc",0) or 0)) for g in rows] or [1]) or 1
-        usable=right-left; y=top-18
-        for g in rows:
-            label=str(g.get("group", "")); label=label if len(label)<=25 else label[:22]+"..."
-            c.setFillColor(colors.HexColor("#334155")); c.setFont("Helvetica",6.5); c.drawRightString(left-8,y+3,label)
-            for val, yy, color in ((float(g.get("buy_usdc",0) or 0),y+4,colors.HexColor("#2878C8")),(float(g.get("sell_usdc",0) or 0),y-3,colors.HexColor("#E66A3C"))):
-                w=usable*val/maximum
-                c.setFillColor(color); c.roundRect(left,yy,w,4,2,fill=1,stroke=0)
-            c.setFillColor(colors.HexColor("#64748B")); c.setFont("Helvetica",6); c.drawRightString(right,y-8,f"B {float(g.get('buy_usdc',0) or 0):,.0f} / S {float(g.get('sell_usdc',0) or 0):,.0f}")
-            y-=21
-        c.setFillColor(colors.HexColor("#2878C8")); c.rect(left,5,7,6,fill=1,stroke=0); c.setFillColor(colors.HexColor("#334155")); c.setFont("Helvetica",6.5); c.drawString(left+11,5,"Buy volume")
-        c.setFillColor(colors.HexColor("#E66A3C")); c.rect(left+82,5,7,6,fill=1,stroke=0); c.setFillColor(colors.HexColor("#334155")); c.drawString(left+93,5,"Sell volume")
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        c = self.canv
+        rows = self.groups
+        font_name = "Helvetica"
+        font_size = 6.5
+        labels = [str(g.get("group", "")) for g in rows]
+        max_label_width = max([stringWidth(label, font_name, font_size) for label in labels] or [0])
+        # Reserve enough space for the longest complete CRM group name.
+        left = max(175, min(315, max_label_width + 18))
+        right = self.width - 12
+        top = self.height - 18
+
+        c.setFillColor(colors.HexColor("#243F66"))
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(4, self.height-10, "Buy-side vs sell-side pressure by group (USDC)")
+
+        maximum = max([max(float(g.get("buy_usdc", 0) or 0),
+                           float(g.get("sell_usdc", 0) or 0)) for g in rows] or [1]) or 1
+        usable = max(30, right-left)
+        y = top-18
+        for g, label in zip(rows, labels):
+            c.setFillColor(colors.HexColor("#334155"))
+            c.setFont(font_name, font_size)
+            c.drawRightString(left-8, y+3, label)
+
+            for val, yy, color in (
+                (float(g.get("buy_usdc", 0) or 0), y+4, colors.HexColor("#2878C8")),
+                (float(g.get("sell_usdc", 0) or 0), y-3, colors.HexColor("#E66A3C"))
+            ):
+                w = usable * val / maximum
+                c.setFillColor(color)
+                c.roundRect(left, yy, w, 4, 2, fill=1, stroke=0)
+
+            c.setFillColor(colors.HexColor("#64748B"))
+            c.setFont("Helvetica", 6)
+            c.drawRightString(right, y-8,
+                              f"B {float(g.get('buy_usdc', 0) or 0):,.0f} / S {float(g.get('sell_usdc', 0) or 0):,.0f}")
+            y -= 21
+
+        c.setFillColor(colors.HexColor("#2878C8"))
+        c.rect(left, 5, 7, 6, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#334155"))
+        c.setFont("Helvetica", 6.5)
+        c.drawString(left+11, 5, "Buy volume")
+        c.setFillColor(colors.HexColor("#E66A3C"))
+        c.rect(left+82, 5, 7, 6, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#334155"))
+        c.drawString(left+93, 5, "Sell volume")
 
 
 class PressureDonutChart(Flowable):
@@ -659,10 +696,20 @@ class PressureDonutChart(Flowable):
                 label = label[:55] + "..."
             c.setFillColor(colors.HexColor("#263548"))
             c.setFont("Helvetica", 7)
-            c.drawString(legend_x+12, y, label)
+            label_x = legend_x + 12
+            c.drawString(label_x, y, label)
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+            label_width = stringWidth(label, "Helvetica", 7)
+            value_text = f"{share:.1f}%  |  {value:,.2f} USDC"
+            value_x = label_x + label_width + 12
+            value_width = stringWidth(value_text, "Helvetica-Bold", 7)
+            # Keep the figures close to their group name; only use the right edge
+            # as a safety fallback for exceptionally long CRM group names.
+            if value_x + value_width > self.width - 8:
+                value_x = self.width - 8 - value_width
             c.setFillColor(colors.HexColor("#475569"))
             c.setFont("Helvetica-Bold", 7)
-            c.drawRightString(self.width-8, y, f"{share:.1f}%  |  {value:,.2f} USDC")
+            c.drawString(value_x, y, value_text)
             y -= 13
         if len(group_rows) > 8:
             c.setFillColor(colors.HexColor("#64748B"))
@@ -748,9 +795,8 @@ def generate_pdf(report, report_id):
 
     ai = report.get("ai_analysis", {})
     if ai.get("text"):
-        story.append(Paragraph("AI Analysis & Observations", styles["Heading1"]))
-        story.append(Paragraph(f"Analysis model: {xml_escape(str(ai.get('model', '')))}", styles["Italic"]))
-        story.append(Spacer(1, 2*mm))
+        # Present the AI-written report content directly, without a technical
+        # "AI Analysis" banner or exposing the backend model identifier.
         ai_lines = ai["text"].splitlines()
 
         def split_markdown_row(raw):
@@ -901,7 +947,7 @@ def generate_pdf(report, report_id):
     def add_table(title, headers, rows, widths=None):
         story.append(Paragraph(title, styles["Heading2"]))
         wallet_index = next((i for i, h in enumerate(headers) if str(h).strip().lower() == "wallet"), -1)
-        data = [[Paragraph(xml_escape(str(h)), styles["SmallCell"]) for h in headers]]
+        data = [[Paragraph(xml_escape(str(h)), styles["AITableHeader"]) for h in headers]]
         for row in rows:
             cells = []
             for col_index, value in enumerate(row):
