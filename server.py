@@ -54,14 +54,15 @@ HEADERS = {
 }
 
 DEFAULT_SETTINGS = {
-    "weekly_enabled": False,
-    "weekly_day": "Friday",
+    "weekly_enabled": True,
+    "weekly_day": "Monday",
     "monthly_enabled": False,
     "monthly_day": "1",
     "send_time": "09:00",
     "timezone": "America/Caracas",
     "last_weekly_run": "",
     "last_monthly_run": "",
+    "schedule_v1_applied": False,
 }
 
 WEEKDAYS = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
@@ -1097,7 +1098,38 @@ def scheduled_report(report_type, start_date, end_date, run_key):
                      "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z", "error": str(e)})
 
 
+def apply_weekly_schedule_defaults():
+    """Apply the agreed Monday weekly schedule once, preserving run history."""
+    cfg = load_settings()
+    if cfg.get("schedule_v1_applied"):
+        return cfg
+    return save_settings({
+        "weekly_enabled": True,
+        "weekly_day": "Monday",
+        "monthly_enabled": False,
+        "send_time": "09:00",
+        "timezone": "America/Caracas",
+        "schedule_v1_applied": True,
+    })
+
+
+def previous_complete_week(now_date):
+    """Return Monday 00:00 through Sunday 23:59 as ISO date boundaries."""
+    end = now_date - timedelta(days=1)
+    start = end - timedelta(days=6)
+    return start.isoformat(), end.isoformat()
+
+
 def scheduler_loop():
+    # Migrate old persisted settings exactly once to the schedule approved by the user.
+    try:
+        applied = apply_weekly_schedule_defaults()
+        print("[SCHEDULER] Weekly schedule:", applied.get("weekly_day"),
+              applied.get("send_time"), applied.get("timezone"),
+              "| monthly:", "enabled" if applied.get("monthly_enabled") else "disabled")
+    except Exception as e:
+        print("[SCHEDULER] Could not initialize schedule defaults:", e)
+
     while True:
         try:
             cfg = load_settings()
@@ -1108,10 +1140,11 @@ def scheduler_loop():
                 if cfg.get("weekly_enabled") and now.weekday() == WEEKDAYS.get(cfg.get("weekly_day"), 4):
                     key = now.strftime("%Y-%m-%d")
                     if cfg.get("last_weekly_run") != key:
-                        yesterday = now.date() - timedelta(days=1)
-                        start = yesterday - timedelta(days=6)
+                        start_date, end_date = previous_complete_week(now.date())
                         save_settings({"last_weekly_run": key})
-                        threading.Thread(target=scheduled_report, args=("Weekly", start.isoformat(), yesterday.isoformat(), key), daemon=True).start()
+                        threading.Thread(target=scheduled_report,
+                                         args=("Weekly", start_date, end_date, key),
+                                         daemon=True).start()
                 if cfg.get("monthly_enabled"):
                     day_value = str(cfg.get("monthly_day", "1"))
                     last_day = (now.date().replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
@@ -1268,7 +1301,7 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             data = self.read_json()
             if p.path == "/crm-config":
-                weekly_day = data.get("weekly_day", "Friday")
+                weekly_day = data.get("weekly_day", "Monday")
                 monthly_day = str(data.get("monthly_day", "1"))
                 send_time = data.get("send_time", "09:00")
                 timezone = data.get("timezone", "America/Caracas")
