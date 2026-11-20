@@ -756,13 +756,33 @@ def generate_pdf(report, report_id):
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, Image as PDFImage
     except Exception as e:
         raise RuntimeError("PDF engine is not installed: " + str(e))
     path = REPORTS_DIR / f"{report_id}.pdf"
-    doc = SimpleDocTemplate(str(path), pagesize=landscape(A4), rightMargin=12*mm,
-                            leftMargin=12*mm, topMargin=12*mm, bottomMargin=12*mm)
+    doc = SimpleDocTemplate(str(path), pagesize=landscape(A4), rightMargin=14*mm,
+                            leftMargin=14*mm, topMargin=19*mm, bottomMargin=17*mm)
     styles = getSampleStyleSheet()
+    # Corporate SAICON report styling. Keep section titles attached to the next flowable
+    # so a heading can never be stranded at the bottom of a page.
+    styles["Title"].fontName = "Helvetica-Bold"
+    styles["Title"].fontSize = 23
+    styles["Title"].leading = 27
+    styles["Title"].textColor = colors.HexColor("#14263D")
+    styles["Heading1"].fontName = "Helvetica-Bold"
+    styles["Heading1"].fontSize = 16
+    styles["Heading1"].leading = 19
+    styles["Heading1"].textColor = colors.HexColor("#142F50")
+    styles["Heading1"].spaceBefore = 5*mm
+    styles["Heading1"].spaceAfter = 3*mm
+    styles["Heading1"].keepWithNext = True
+    styles["Heading2"].fontName = "Helvetica-Bold"
+    styles["Heading2"].fontSize = 11
+    styles["Heading2"].leading = 14
+    styles["Heading2"].textColor = colors.HexColor("#176B91")
+    styles["Heading2"].spaceBefore = 3*mm
+    styles["Heading2"].spaceAfter = 2*mm
+    styles["Heading2"].keepWithNext = True
     styles.add(ParagraphStyle(name="SmallCell", parent=styles["BodyText"], fontSize=7, leading=8))
     styles.add(ParagraphStyle(name="AITableCell", parent=styles["BodyText"], fontSize=7.2, leading=9,
                               spaceAfter=0, wordWrap="CJK"))
@@ -772,9 +792,43 @@ def generate_pdf(report, report_id):
                               fontSize=5.5, leading=6, spaceAfter=0, wordWrap="LTR"))
     styles.add(ParagraphStyle(name="ClassificationCell", parent=styles["BodyText"], fontSize=6.5,
                               leading=7.5, spaceAfter=0, wordWrap="CJK"))
-    story = [Paragraph("BTN Price Influence Report", styles["Title"]),
-             Paragraph(f"BTN/USDC Pool · {report['start_date']} to {report['end_date']}", styles["Heading2"]),
-             Spacer(1, 5*mm)]
+    logo_path = Path(__file__).resolve().parent / "saicon-logo.png"
+
+    def page_chrome(canvas, document):
+        canvas.saveState()
+        page_w, page_h = landscape(A4)
+        # Fine corporate rule and compact brand header.
+        canvas.setStrokeColor(colors.HexColor("#D7E0E8"))
+        canvas.setLineWidth(0.6)
+        canvas.line(14*mm, page_h-12*mm, page_w-14*mm, page_h-12*mm)
+        if logo_path.exists() and document.page > 1:
+            canvas.drawImage(str(logo_path), 14*mm, page_h-10.5*mm,
+                             width=25*mm, height=8.8*mm, preserveAspectRatio=True,
+                             anchor="sw", mask="auto")
+        if document.page > 1:
+            canvas.setFont("Helvetica", 7)
+            canvas.setFillColor(colors.HexColor("#64748B"))
+            canvas.drawRightString(page_w-14*mm, page_h-8.5*mm, "BTN PRICE INFLUENCE REPORT  |  V35")
+        canvas.setStrokeColor(colors.HexColor("#D7E0E8"))
+        canvas.line(14*mm, 12*mm, page_w-14*mm, 12*mm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.drawString(14*mm, 7.5*mm, "CONFIDENTIAL · INTERNAL USE ONLY")
+        canvas.drawRightString(page_w-14*mm, 7.5*mm, f"SAICON  |  Page {document.page}")
+        canvas.restoreState()
+
+    cover_logo = []
+    if logo_path.exists():
+        cover_logo.append(PDFImage(str(logo_path), width=82*mm, height=28.7*mm,
+                                   kind="proportional", hAlign="LEFT"))
+        cover_logo.append(Spacer(1, 7*mm))
+    story = cover_logo + [
+        Paragraph("BTN Price Influence Report", styles["Title"]),
+        Paragraph(f"BTN/USDC Pool · {report['start_date']} to {report['end_date']}", styles["Heading2"]),
+        Paragraph(f"Generated {datetime.now().strftime('%B %d, %Y · %H:%M')}  |  V35",
+                  ParagraphStyle("CoverMeta", parent=styles["BodyText"], fontSize=8,
+                                 textColor=colors.HexColor("#64748B"), spaceAfter=5*mm)),
+    ]
     metrics = [
         ["Total swaps", "Buy swaps", "Sell swaps", "Trader wallets", "CRM matched", "Not in CRM"],
         [f"{report['swap_count']:,}", f"{report['buy_count']:,}", f"{report['sell_count']:,}",
@@ -975,8 +1029,10 @@ def generate_pdf(report, report_id):
                    x["type"], x["group"], x["account"]] for x in report["buyers"]]
     seller_rows = [[x["rank"], x["wallet"], money(x["sell_btn"], 4), money(x["sell_usdc"]), x["sell_swaps"],
                     x["type"], x["group"], x["account"]] for x in report["sellers"]]
+    story.append(PageBreak())
     add_table("Top 20 Buyer Wallets", ["#", "Wallet", "BTN bought", "USDC spent", "Swaps", "Type", "Group", "Account"], buyer_rows,
               [8*mm, 58*mm, 22*mm, 22*mm, 13*mm, 19*mm, 66*mm, 25*mm])
+    story.append(PageBreak())
     add_table("Top 20 Seller Wallets", ["#", "Wallet", "BTN sold", "USDC received", "Swaps", "Type", "Group", "Account"], seller_rows,
               [8*mm, 58*mm, 22*mm, 24*mm, 13*mm, 19*mm, 66*mm, 25*mm])
     story.append(PageBreak())
@@ -1003,7 +1059,7 @@ def generate_pdf(report, report_id):
     if report.get("indexing_errors"):
         note += " WARNING: The Graph subgraph reported indexing errors for this query."
     story.append(Paragraph(note, styles["Italic"]))
-    doc.build(story)
+    doc.build(story, onFirstPage=page_chrome, onLaterPages=page_chrome)
     return path
 
 
