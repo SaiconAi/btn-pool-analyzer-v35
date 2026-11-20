@@ -792,7 +792,7 @@ def generate_pdf(report, report_id):
                               fontSize=5.5, leading=6, spaceAfter=0, wordWrap="LTR"))
     styles.add(ParagraphStyle(name="ClassificationCell", parent=styles["BodyText"], fontSize=6.5,
                               leading=7.5, spaceAfter=0, wordWrap="CJK"))
-    logo_path = Path(__file__).resolve().parent / "saicon-logo.png"
+    logo_path = Path(__file__).resolve().parent / "saicon-logo-report.png"
 
     def page_chrome(canvas, document):
         canvas.saveState()
@@ -1043,7 +1043,7 @@ def generate_pdf(report, report_id):
     unknown_rows = [[x["wallet"], money(x["buy_btn"], 4), money(x["sell_btn"], 4), money(x["buy_usdc"]), money(x["sell_usdc"])]
                     for x in report["unknown_wallets"]]
     if unknown_rows:
-        add_table("Wallets Not Found in CRM (top 100 by activity)", ["Wallet", "BTN bought", "BTN sold", "USDC spent", "USDC received"], unknown_rows,
+        add_table("Wallets Not Found in CRM", ["Wallet", "BTN bought", "BTN sold", "USDC spent", "USDC received"], unknown_rows,
                   [65*mm, 25*mm, 25*mm, 25*mm, 30*mm])
     story.append(Paragraph("Wallet Classification Definitions", styles["Heading2"]))
     definitions = [
